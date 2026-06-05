@@ -1,0 +1,69 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: #F5F0E8;
+  color: #0D0D0D;
+  font-family: 'DM Sans', sans-serif;
+}
+
+@layer components {
+  .card {
+    @apply bg-cream border border-gold/20 rounded-2xl shadow-sm;
+  }
+
+  .btn-primary {
+    @apply bg-emerald text-cream font-medium px-5 py-2.5 rounded-xl hover:bg-emerald-light transition-all duration-200 text-sm;
+  }
+
+  .btn-gold {
+    @apply bg-gold text-ink font-medium px-5 py-2.5 rounded-xl hover:bg-gold-dark hover:text-cream transition-all duration-200 text-sm;
+  }
+
+  .btn-outline {
+    @apply border border-gold/40 text-ink font-medium px-5 py-2.5 rounded-xl hover:bg-gold/10 transition-all duration-200 text-sm;
+  }
+
+  .input-field {
+    @apply w-full bg-paper border border-gold/30 rounded-xl px-4 py-2.5 text-sm text-ink placeholder-muted focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition-all;
+  }
+
+  .stat-card {
+    @apply card p-5 flex flex-col gap-1;
+  }
+  /* app/globals.css */
+.btn-primary {
+  @apply px-4 py-2 bg-gold text-ink rounded-xl font-medium text-sm hover:bg-gold-dark transition-all;
+}
+
+.btn-outline {
+  @apply px-4 py-2 border border-gold/30 text-ink rounded-xl font-medium text-sm hover:bg-gold/5 transition-all;
+}
+
+.btn-gold {
+  @apply px-4 py-2 bg-gold text-ink rounded-xl font-medium text-sm hover:bg-gold-dark transition-all;
+}
+
+.card {
+  @apply bg-cream rounded-2xl border border-gold/15 shadow-sm;
+}
+
+.stat-card {
+  @apply card p-4 flex flex-col gap-1;
+}
+
+.input-field {
+  @apply w-full px-3 py-2 bg-paper border border-gold/20 rounded-xl text-sm text-ink focus:outline-none focus:border-gold transition-all;
+}
+}
+
+.scrollbar-thin::-webkit-scrollbar { width: 4px; height: 4px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: #C9A84C55; border-radius: 99px; }
