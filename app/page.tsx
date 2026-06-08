@@ -970,9 +970,9 @@ export default function App() {
         .inp{width:100%;background:#F5F0E8;border:1px solid rgba(201,168,76,0.3);border-radius:12px;padding:10px 14px;font-size:14px;color:#0D0D0D;outline:none;transition:all 0.15s;}
         .inp:focus{border-color:#C9A84C;box-shadow:0 0 0 3px rgba(201,168,76,0.12);}
         .inp option{background:#FDF8F0;}
-        .btn-primary{background:#1A5C3A;color:#FDF8F0;font-weight:500;padding:9px 18px;border-radius:12px;font-size:14px;transition:all 0.2s;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
+        .btn-primary{background:#1A5C3A;color:#FDF8F0;font-weight:500;padding:9px 10px;border-radius:12px;font-size:13px;transition:all 0.2s;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
         .btn-primary:hover{background:#15492e;}
-        .btn-gold{background:#C9A84C;color:#0D0D0D;font-weight:500;padding:9px 18px;border-radius:12px;font-size:14px;transition:all 0.2s;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
+        .btn-gold{background:#C9A84C;color:#0D0D0D;font-weight:600;padding:9px 10px;border-radius:12px;font-size:12px;transition:all 0.2s;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
         .btn-gold:hover{background:#b8973e;}
         .btn-outline{background:transparent;color:#0D0D0D;font-weight:500;padding:9px 18px;border-radius:12px;font-size:14px;transition:all 0.2s;border:1px solid rgba(201,168,76,0.4);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
         .btn-outline:hover{background:rgba(201,168,76,0.08);}
@@ -1005,7 +1005,7 @@ export default function App() {
           <div className="flex items-center gap-1.5 shrink-0">
             <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleUpload} />
             <button className="btn-outline text-xs py-2 px-2.5" onClick={() => fileRef.current?.click()}><Upload size={13} /><span className="hidden sm:inline">Load</span></button>
-            <button className="btn-gold text-xs py-2 px-2.5" onClick={() => exportExcel(data)}><Download size={13} /><span className="hidden sm:inline">Export</span></button>
+            <button className="btn-gold text-xs py-2 px-2.5" onClick={() => exportExcel(data)}><Download size={13} /><span className="sm:inline">Export</span></button>
           </div>
         </div>
 
@@ -1171,16 +1171,16 @@ export default function App() {
               </div>
               <div className="flex gap-2">
                 {subTab === 'investments' && currentAssets.length > 0 && (
-                  <button className="btn-primary text-xs py-2 px-3" onClick={() => openInvest(mainTab)}>
+                  <button className="btn-primary text-xs py-2 px-2" onClick={() => openInvest(mainTab)}>
                     <Plus size={13} />Log
                   </button>
                 )}
-                <button className="btn-primary text-xs py-2 px-3" onClick={() => {
+                <button className="btn-primary text-xs py-2 px-2" onClick={() => {
                   if (isMFTab) setShowFundModal(true)
                   else if (isETFTab) setShowETFModal(true)
                   else setShowStockModal(true)
                 }}>
-                  <Plus size={13} />Add {isMFTab ? 'Fund' : isETFTab ? 'ETF' : 'Stock'}
+                  <Plus size={14} />Add {isMFTab ? 'Fund' : isETFTab ? 'ETF' : 'Stock'}
                 </button>
               </div>
             </div>
