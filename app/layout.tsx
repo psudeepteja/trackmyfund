@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'MF Tracker — Mutual Fund Investment Tracker',
+  title: 'TrackMyFund',
   description: 'Track your monthly SIP investments across mutual funds. Data stored in your own Excel file.',
 }
 

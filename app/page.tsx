@@ -292,7 +292,7 @@ function FundModal({ fund, onSave, onClose }: FundModalProps) {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Start Month"><input className="inp" type="month" value={form.startDate} onChange={e => setField('startDate', e.target.value)} /></Field>
-          <Field label="Expected CAGR %"><input className="inp" type="number" min={1} max={50} step={0.5} value={form.expectedReturn} onChange={e => setField('expectedReturn', +e.target.value)} /></Field>
+          <Field label="Expected CAGR %"><input className="inp" type="number" value={form.expectedReturn} onChange={e => setField('expectedReturn', +e.target.value)} /></Field>
         </div>
         <ColorPicker value={form.color} onChange={c => setField('color', c)} />
         <div className="flex gap-3 pt-2">
@@ -329,7 +329,7 @@ function ETFModal({ etf, onSave, onClose }: ETFModalProps) {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Start Month"><input className="inp" type="month" value={form.startDate} onChange={e => setField('startDate', e.target.value)} /></Field>
-          <Field label="Expected CAGR %"><input className="inp" type="number" min={1} max={50} step={0.5} value={form.expectedReturn} onChange={e => setField('expectedReturn', +e.target.value)} /></Field>
+          <Field label="Expected CAGR %"><input className="inp" type="number" value={form.expectedReturn} onChange={e => setField('expectedReturn', +e.target.value)} /></Field>
         </div>
         <ColorPicker value={form.color} onChange={c => setField('color', c)} />
         <div className="flex gap-3 pt-2">
@@ -369,7 +369,7 @@ function StockModal({ stock, onSave, onClose }: StockModalProps) {
           <Field label="Buy Price (₹)"><input className="inp" type="number" min={1} step={0.01} value={form.buyPrice} onChange={e => setField('buyPrice', +e.target.value)} /></Field>
           <Field label="Start Month"><input className="inp" type="month" value={form.startDate} onChange={e => setField('startDate', e.target.value)} /></Field>
         </div>
-        <Field label="Expected CAGR %"><input className="inp" type="number" min={1} max={50} step={0.5} value={form.expectedReturn} onChange={e => setField('expectedReturn', +e.target.value)} /></Field>
+        <Field label="Expected CAGR %"><input className="inp" type="number" value={form.expectedReturn} onChange={e => setField('expectedReturn', +e.target.value)} /></Field>
         <ColorPicker value={form.color} onChange={c => setField('color', c)} />
         <div className="flex gap-3 pt-2">
           <button className="btn-outline flex-1" onClick={onClose}>Cancel</button>
