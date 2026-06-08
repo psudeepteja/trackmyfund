@@ -288,7 +288,7 @@ function FundModal({ fund, onSave, onClose }: FundModalProps) {
         <Field label="Fund Name"><input className="inp" placeholder="e.g. Mirae Asset Large Cap" value={form.name} onChange={e => setField('name', e.target.value)} /></Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Category"><select className="inp" value={form.category} onChange={e => setField('category', e.target.value)}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></Field>
-          <Field label="Monthly SIP (₹)"><input className="inp" type="number" min={100} step={100} value={form.sipAmount} onChange={e => setField('sipAmount', +e.target.value)} /></Field>
+          <Field label="Monthly SIP (₹)"><input className="inp" type="number" value={form.sipAmount} onChange={e => setField('sipAmount', +e.target.value)} /></Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Start Month"><input className="inp" type="month" value={form.startDate} onChange={e => setField('startDate', e.target.value)} /></Field>
@@ -325,7 +325,7 @@ function ETFModal({ etf, onSave, onClose }: ETFModalProps) {
         <Field label="Symbol"><input className="inp" placeholder="e.g. NIPPONETF" value={form.symbol} onChange={e => setField('symbol', e.target.value.toUpperCase())} /></Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Category"><select className="inp" value={form.category} onChange={e => setField('category', e.target.value)}>{ETF_CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></Field>
-          <Field label="Monthly SIP (₹)"><input className="inp" type="number" min={100} step={100} value={form.sipAmount} onChange={e => setField('sipAmount', +e.target.value)} /></Field>
+          <Field label="Monthly SIP (₹)"><input className="inp" type="number" value={form.sipAmount} onChange={e => setField('sipAmount', +e.target.value)} /></Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Start Month"><input className="inp" type="month" value={form.startDate} onChange={e => setField('startDate', e.target.value)} /></Field>
@@ -363,10 +363,10 @@ function StockModal({ stock, onSave, onClose }: StockModalProps) {
         <Field label="Symbol"><input className="inp" placeholder="e.g. RELIANCE" value={form.symbol} onChange={e => setField('symbol', e.target.value.toUpperCase())} /></Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Category"><select className="inp" value={form.category} onChange={e => setField('category', e.target.value)}>{STOCK_CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></Field>
-          <Field label="Quantity"><input className="inp" type="number" min={1} value={form.quantity} onChange={e => setField('quantity', +e.target.value)} /></Field>
+          <Field label="Quantity"><input className="inp" type="number" value={form.quantity} onChange={e => setField('quantity', +e.target.value)} /></Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Buy Price (₹)"><input className="inp" type="number" min={1} step={0.01} value={form.buyPrice} onChange={e => setField('buyPrice', +e.target.value)} /></Field>
+          <Field label="Buy Price (₹)"><input className="inp" type="number" value={form.buyPrice} onChange={e => setField('buyPrice', +e.target.value)} /></Field>
           <Field label="Start Month"><input className="inp" type="month" value={form.startDate} onChange={e => setField('startDate', e.target.value)} /></Field>
         </div>
         <Field label="Expected CAGR %"><input className="inp" type="number" value={form.expectedReturn} onChange={e => setField('expectedReturn', +e.target.value)} /></Field>
@@ -475,7 +475,7 @@ function InvestmentModal({ assetType, funds, etfs, stocks, payment, preSelectedA
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Month"><input className="inp" type="month" value={form.date} onChange={e => setField('date', e.target.value)} /></Field>
-          <Field label="Amount (₹)"><input className="inp" type="number" min={1} step={100} value={form.amount} onChange={e => handleAmountChange(e.target.value)} /></Field>
+          <Field label="Amount (₹)"><input className="inp" type="number" value={form.amount} onChange={e => handleAmountChange(e.target.value)} /></Field>
         </div>
 
         {isMF && (
