@@ -596,81 +596,81 @@ function ProjectionModal({ funds, etfs, stocks, onClose }: ProjectionModalProps)
 }
 
 // ─── Global Search Modal ──────────────────────────────────────────────────────
-function GlobalSearchModal({ data, onClose, onNavigate }: GlobalSearchModalProps) {
-  const [q, setQ] = useState('')
-  const allAssets = [
-    ...data.funds.map(f => ({ ...f, assetType: 'mutual-funds' as const, typeName: 'Mutual Fund' })),
-    ...data.etfs.map(e => ({ ...e, assetType: 'etfs' as const, typeName: 'ETF' })),
-    ...data.stocks.map(s => ({ ...s, assetType: 'stocks' as const, typeName: 'Stock' }))
-  ]
-  const months = [...new Set(data.payments.map(p => p.date))].sort().reverse()
-  const lq = q.toLowerCase()
-  const filteredAssets = q.length > 1 ? allAssets.filter(a => {
-    const matchesName = a.name.toLowerCase().includes(lq)
-    const matchesCategory = a.category?.toLowerCase().includes(lq)
-    const matchesSymbol = 'symbol' in a && a.symbol?.toLowerCase().includes(lq)
-    return matchesName || matchesCategory || matchesSymbol
-  }) : []
-  const filteredMonths = q.length > 1 ? months.filter(m => getMonthLabel(m).toLowerCase().includes(lq)) : []
+// function GlobalSearchModal({ data, onClose, onNavigate }: GlobalSearchModalProps) {
+//   const [q, setQ] = useState('')
+//   const allAssets = [
+//     ...data.funds.map(f => ({ ...f, assetType: 'mutual-funds' as const, typeName: 'Mutual Fund' })),
+//     ...data.etfs.map(e => ({ ...e, assetType: 'etfs' as const, typeName: 'ETF' })),
+//     ...data.stocks.map(s => ({ ...s, assetType: 'stocks' as const, typeName: 'Stock' }))
+//   ]
+//   const months = [...new Set(data.payments.map(p => p.date))].sort().reverse()
+//   const lq = q.toLowerCase()
+//   const filteredAssets = q.length > 1 ? allAssets.filter(a => {
+//     const matchesName = a.name.toLowerCase().includes(lq)
+//     const matchesCategory = a.category?.toLowerCase().includes(lq)
+//     const matchesSymbol = 'symbol' in a && a.symbol?.toLowerCase().includes(lq)
+//     return matchesName || matchesCategory || matchesSymbol
+//   }) : []
+//   const filteredMonths = q.length > 1 ? months.filter(m => getMonthLabel(m).toLowerCase().includes(lq)) : []
 
-  const go = (tab: string, sub: string) => { onNavigate(tab, sub); onClose() }
+//   const go = (tab: string, sub: string) => { onNavigate(tab, sub); onClose() }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-      <div className="relative bg-[#FDF8F0] rounded-2xl shadow-2xl border border-[#C9A84C]/20 w-full max-w-lg" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-[#C9A84C]/15">
-          <Search size={16} className="text-[#8A8070] shrink-0" />
-          <input
-            autoFocus
-            className="flex-1 bg-transparent text-[#0D0D0D] text-sm outline-none placeholder-[#8A8070]"
-            placeholder="Search by fund name, symbol, month..."
-            value={q} onChange={e => setQ(e.target.value)}
-          />
-          {q && <button onClick={() => setQ('')} className="text-[#8A8070]"><X size={14} /></button>}
-        </div>
-        {q.length < 2 ? (
-          <div className="px-4 py-6 text-center text-sm text-[#8A8070]">Type at least 2 characters to search</div>
-        ) : filteredAssets.length === 0 && filteredMonths.length === 0 ? (
-          <div className="px-4 py-6 text-center text-sm text-[#8A8070]">No results found for "{q}"</div>
-        ) : (
-          <div className="max-h-80 overflow-y-auto divide-y divide-[#C9A84C]/10">
-            {filteredAssets.map(a => (
-              <button key={a.id} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F5F0E8] text-left transition-colors"
-                onClick={() => go(a.assetType, 'list')}>
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: a.color + '22' }}>
-                  <div className="w-2 h-2 rounded-full" style={{ background: a.color }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-[#0D0D0D] truncate">{a.name}</p>
-                  <p className="text-xs text-[#8A8070]">{a.typeName} · {a.category}</p>
-                </div>
-                <span className="text-xs text-[#C9A84C] shrink-0">View →</span>
-              </button>
-            ))}
-            {filteredMonths.map(m => {
-              const mPayments = data.payments.filter(p => p.date === m)
-              const total = mPayments.reduce((s, p) => s + p.amount, 0)
-              return (
-                <button key={m} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F5F0E8] text-left transition-colors"
-                  onClick={() => go('dashboard', '')}>
-                  <div className="w-8 h-8 rounded-lg bg-[#1A5C3A]/10 flex items-center justify-center shrink-0">
-                    <Calendar size={14} className="text-[#1A5C3A]" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-[#0D0D0D]">{getMonthLabel(m)}</p>
-                    <p className="text-xs text-[#8A8070]">{mPayments.length} investments · ₹{total.toLocaleString('en-IN')}</p>
-                  </div>
-                  <span className="text-xs text-[#C9A84C] shrink-0">View →</span>
-                </button>
-              )
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
+//   return (
+//     <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4" onClick={onClose}>
+//       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+//       <div className="relative bg-[#FDF8F0] rounded-2xl shadow-2xl border border-[#C9A84C]/20 w-full max-w-lg" onClick={e => e.stopPropagation()}>
+//         <div className="flex items-center gap-3 px-4 py-3 border-b border-[#C9A84C]/15">
+//           <Search size={16} className="text-[#8A8070] shrink-0" />
+//           <input
+//             autoFocus
+//             className="flex-1 bg-transparent text-[#0D0D0D] text-sm outline-none placeholder-[#8A8070]"
+//             placeholder="Search by fund name, symbol, month..."
+//             value={q} onChange={e => setQ(e.target.value)}
+//           />
+//           {q && <button onClick={() => setQ('')} className="text-[#8A8070]"><X size={14} /></button>}
+//         </div>
+//         {q.length < 2 ? (
+//           <div className="px-4 py-6 text-center text-sm text-[#8A8070]">Type at least 2 characters to search</div>
+//         ) : filteredAssets.length === 0 && filteredMonths.length === 0 ? (
+//           <div className="px-4 py-6 text-center text-sm text-[#8A8070]">No results found for "{q}"</div>
+//         ) : (
+//           <div className="max-h-80 overflow-y-auto divide-y divide-[#C9A84C]/10">
+//             {filteredAssets.map(a => (
+//               <button key={a.id} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F5F0E8] text-left transition-colors"
+//                 onClick={() => go(a.assetType, 'list')}>
+//                 <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: a.color + '22' }}>
+//                   <div className="w-2 h-2 rounded-full" style={{ background: a.color }} />
+//                 </div>
+//                 <div className="flex-1 min-w-0">
+//                   <p className="text-sm font-medium text-[#0D0D0D] truncate">{a.name}</p>
+//                   <p className="text-xs text-[#8A8070]">{a.typeName} · {a.category}</p>
+//                 </div>
+//                 <span className="text-xs text-[#C9A84C] shrink-0">View →</span>
+//               </button>
+//             ))}
+//             {filteredMonths.map(m => {
+//               const mPayments = data.payments.filter(p => p.date === m)
+//               const total = mPayments.reduce((s, p) => s + p.amount, 0)
+//               return (
+//                 <button key={m} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F5F0E8] text-left transition-colors"
+//                   onClick={() => go('dashboard', '')}>
+//                   <div className="w-8 h-8 rounded-lg bg-[#1A5C3A]/10 flex items-center justify-center shrink-0">
+//                     <Calendar size={14} className="text-[#1A5C3A]" />
+//                   </div>
+//                   <div className="flex-1">
+//                     <p className="text-sm font-medium text-[#0D0D0D]">{getMonthLabel(m)}</p>
+//                     <p className="text-xs text-[#8A8070]">{mPayments.length} investments · ₹{total.toLocaleString('en-IN')}</p>
+//                   </div>
+//                   <span className="text-xs text-[#C9A84C] shrink-0">View →</span>
+//                 </button>
+//               )
+//             })}
+//           </div>
+//         )}
+//       </div>
+//     </div>
+//   )
+// }
 
 // ─── Small helpers ────────────────────────────────────────────────────────────
 function Field({ label, children }: FieldProps) {
@@ -705,6 +705,18 @@ function SearchBar({ value, onChange, placeholder }: SearchBarProps) {
       />
       {value && <button onClick={() => onChange('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8A8070]"><X size={12} /></button>}
     </div>
+  )
+}
+
+function Logo({ size = 24 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" fill="none">
+      <rect width="100" height="100" rx="22" fill="bg-emerald" />
+      <polyline points="14,73 32,48 50,61 67,32 85,19"
+        stroke="white" strokeWidth="7" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="67" cy="32" r="6" fill="white" />
+      <circle cx="85" cy="19" r="6" fill="#FCD34D" />
+    </svg>
   )
 }
 
@@ -911,8 +923,17 @@ export default function App() {
     }
   })
 
-  if (!isClient) return <div className="min-h-screen bg-[#F5F0E8] flex items-center justify-center"><div className="text-[#8A8070]">Loading...</div></div>
-
+  if (!isClient) {
+    return (
+      <div className="min-h-screen bg-paper flex flex-col items-center justify-center p-6">
+        <div className="max-w-lg w-full text-center">
+          <div className="w-16 h-16 rounded-2xl bg-emerald flex items-center justify-center mx-auto mb-6 animate-pulse">
+            <Logo size={44} />
+          </div>
+        </div>
+      </div>
+    )
+  }
   // ── Landing ──
   if (!loaded) {
     const hasSaved = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null
@@ -966,20 +987,20 @@ export default function App() {
         <div className="max-w-6xl mx-auto px-3 sm:px-4 py-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 shrink-0">
             <div className="w-8 h-8 rounded-xl bg-[#1A5C3A] flex items-center justify-center">
-              <TrendingUp size={16} className="text-[#FDF8F0]" />
+              <Logo />
             </div>
-            <span className="font-bold text-[#0D0D0D] text-sm hidden sm:block">TrackMyFund</span>
+            <span className="font-bold text-[#0D0D0D] text-sm sm:block">TrackMyFund</span>
           </div>
 
           {/* Global Search Bar */}
-          <button
+          {/* <button
             className="flex-1 max-w-xs flex items-center gap-2 bg-[#F5F0E8] border border-[#C9A84C]/20 rounded-xl px-3 py-2 text-sm text-[#8A8070] hover:border-[#C9A84C] transition-all"
             onClick={() => setShowGlobalSearch(true)}>
             <Search size={13} />
             <span className="hidden sm:block">Search funds, months...</span>
             <span className="sm:hidden">Search...</span>
             <span className="ml-auto text-xs hidden sm:block opacity-60">⌘K</span>
-          </button>
+          </button> */}
 
           <div className="flex items-center gap-1.5 shrink-0">
             <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleUpload} />
@@ -989,7 +1010,7 @@ export default function App() {
         </div>
 
         {/* Main Tabs */}
-        <div className="max-w-6xl mx-auto px-3 sm:px-4 flex overflow-x-auto">
+        <div className="max-w-6xl mx-auto px-3 sm:px-4 flex overflow-x-auto overflow-y-hidden">
           {([
             ['dashboard', 'Dashboard', BarChart3],
             ['mutual-funds', 'Mutual Funds', Wallet],
@@ -1447,7 +1468,7 @@ export default function App() {
         />
       )}
       {showProjection && <ProjectionModal funds={data.funds} etfs={data.etfs} stocks={data.stocks} onClose={() => setShowProjection(false)} />}
-      {showGlobalSearch && <GlobalSearchModal data={data} onClose={() => setShowGlobalSearch(false)} onNavigate={(tab, sub) => { setMainTab(tab); if (sub) setSubTab(sub) }} />}
+      {/* {showGlobalSearch && <GlobalSearchModal data={data} onClose={() => setShowGlobalSearch(false)} onNavigate={(tab, sub) => { setMainTab(tab); if (sub) setSubTab(sub) }} />} */}
 
       <p className="text-center text-[#8A8070] text-xs pb-4">Copyright © 2026 Sudeep Teja.</p>
     </div>
