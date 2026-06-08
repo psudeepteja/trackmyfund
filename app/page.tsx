@@ -1,40 +1,82 @@
-'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+"use client"
+import { useState, useCallback, useRef, useEffect, useMemo } from "react"
 import {
   Upload, Download, Plus, Trash2, TrendingUp, Wallet,
-  Calendar, BarChart3, ChevronDown, ChevronUp, RefreshCw,
-  FileSpreadsheet, Info, X, Edit3, Check, BarChart2, Activity
-} from 'lucide-react'
+  Calendar, BarChart3, ChevronDown, X, Edit3, BarChart2,
+  Activity, Search, RefreshCw, FileSpreadsheet, Info, Filter
+} from "lucide-react"
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend, BarChart, Bar
-} from 'recharts'
-import {
-  parseExcel, exportExcel, emptyData, generateId, currentYearMonth,
-  calcFutureValue, calcTotalInvested, getMonthLabel,
-  Fund, ETF, Stock, Payment, TrackerData, AssetType
-} from '@/lib/excel'
+  PieChart, Pie, Cell, BarChart, Bar
+} from "recharts"
+import * as XLSX from "xlsx"
 
-const CATEGORIES = ['Equity', 'Debt', 'Hybrid', 'ELSS', 'Index', 'Gold', 'International', 'Other']
-const ETF_CATEGORIES = ['Large Cap', 'Mid Cap', 'Small Cap', 'Sectoral', 'Gold', 'International', 'Debt', 'Other']
-const STOCK_CATEGORIES = ['Large Cap', 'Mid Cap', 'Small Cap', 'Dividend', 'Growth', 'PSU', 'Banking', 'IT', 'Pharma', 'Other']
-const ASSET_COLORS = ['#C9A84C', '#1A5C3A', '#8B4513', '#4A148C', '#1565C0', '#BF360C', '#00695C', '#6A1B9A', '#E91E63', '#9C27B0']
-
-// Storage key for localStorage
+// ─── Types & Constants ────────────────────────────────────────────────────────
+const ASSET_COLORS = ['#C9A84C','#1A5C3A','#8B4513','#4A148C','#1565C0','#BF360C','#00695C','#6A1B9A','#E91E63','#9C27B0']
+const CATEGORIES = ['Equity','Debt','Hybrid','ELSS','Index','Gold','International','Other']
+const ETF_CATEGORIES = ['Large Cap','Mid Cap','Small Cap','Sectoral','Gold','International','Debt','Other']
+const STOCK_CATEGORIES = ['Large Cap','Mid Cap','Small Cap','Dividend','Growth','PSU','Banking','IT','Pharma','Other']
 const STORAGE_KEY = 'investment-tracker-data'
 
-// ─── Modal ───────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6) }
+function currentYearMonth() { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }
+function getMonthLabel(ym) { const [y,m]=ym.split('-'); return new Date(+y,+m-1).toLocaleString('default',{month:'short',year:'2-digit'}) }
+function calcFutureValue(monthly,months,rate) { if(!rate) return monthly*months; const r=rate/100/12; return monthly*((Math.pow(1+r,months)-1)/r)*(1+r) }
+function calcTotalInvested(payments,assetId,assetType) {
+  return payments.filter(p=>(!assetId||p.assetId===assetId)&&(!assetType||p.assetType===assetType)).reduce((s,p)=>s+p.amount,0)
+}
+function emptyData() { return {funds:[],etfs:[],stocks:[],payments:[]} }
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+// ─── Excel ────────────────────────────────────────────────────────────────────
+function parseExcel(buf) {
+  const wb=XLSX.read(buf,{type:'array'}); const funds=[],etfs=[],stocks=[],payments=[]
+  if(wb.SheetNames.includes('Funds')) {
+    XLSX.utils.sheet_to_json(wb.Sheets['Funds'],{defval:''}).forEach(r=>{
+      if(r.id&&r.name) funds.push({id:String(r.id),name:String(r.name),category:String(r.category||'Equity'),sipAmount:+r.sipAmount||0,startDate:String(r.startDate||''),expectedReturn:+r.expectedReturn||12,color:String(r.color||ASSET_COLORS[0]),assetType:'mutual-funds'})
+    })
+  }
+  if(wb.SheetNames.includes('ETFs')) {
+    XLSX.utils.sheet_to_json(wb.Sheets['ETFs'],{defval:''}).forEach(r=>{
+      if(r.id&&r.name) etfs.push({id:String(r.id),name:String(r.name),symbol:String(r.symbol||''),category:String(r.category||'Large Cap'),sipAmount:+r.sipAmount||0,startDate:String(r.startDate||''),expectedReturn:+r.expectedReturn||12,color:String(r.color||ASSET_COLORS[2]),assetType:'etfs'})
+    })
+  }
+  if(wb.SheetNames.includes('Stocks')) {
+    XLSX.utils.sheet_to_json(wb.Sheets['Stocks'],{defval:''}).forEach(r=>{
+      if(r.id&&r.name) stocks.push({id:String(r.id),name:String(r.name),symbol:String(r.symbol||''),category:String(r.category||'Large Cap'),quantity:+r.quantity||0,buyPrice:+r.buyPrice||0,startDate:String(r.startDate||''),expectedReturn:+r.expectedReturn||15,color:String(r.color||ASSET_COLORS[4]),assetType:'stocks'})
+    })
+  }
+  if(wb.SheetNames.includes('Payments')) {
+    XLSX.utils.sheet_to_json(wb.Sheets['Payments'],{defval:''}).forEach(r=>{
+      if(r.id&&r.assetId&&r.date) payments.push({id:String(r.id),assetId:String(r.assetId),assetType:String(r.assetType),date:String(r.date),amount:+r.amount||0,quantity:r.quantity?+r.quantity:undefined,price:r.price?+r.price:undefined,notes:r.notes?String(r.notes):undefined,nav:r.nav?+r.nav:undefined,units:r.units?+r.units:undefined})
+    })
+  }
+  return {funds,etfs,stocks,payments}
+}
+function exportExcel(data) {
+  const wb=XLSX.utils.book_new()
+  const addSheet=(rows,name)=>XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows.length?rows:[{}]),name)
+  addSheet(data.funds.map(f=>({id:f.id,name:f.name,category:f.category,sipAmount:f.sipAmount,startDate:f.startDate,expectedReturn:f.expectedReturn,color:f.color})),'Funds')
+  addSheet(data.etfs.map(e=>({id:e.id,name:e.name,symbol:e.symbol,category:e.category,sipAmount:e.sipAmount,startDate:e.startDate,expectedReturn:e.expectedReturn,color:e.color})),'ETFs')
+  addSheet(data.stocks.map(s=>({id:s.id,name:s.name,symbol:s.symbol,category:s.category,quantity:s.quantity,buyPrice:s.buyPrice,startDate:s.startDate,expectedReturn:s.expectedReturn,color:s.color})),'Stocks')
+  addSheet(data.payments.map(p=>({id:p.id,assetId:p.assetId,assetType:p.assetType,date:p.date,amount:p.amount,quantity:p.quantity??'',price:p.price??'',notes:p.notes??'',nav:p.nav??'',units:p.units??''})),'Payments')
+  XLSX.writeFile(wb,'investment-tracker.xlsx')
+}
+
+// ─── Modal Shell ──────────────────────────────────────────────────────────────
+function Modal({title,onClose,children,wide=false}) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-ink/40 backdrop-blur-sm" />
-      <div className="relative bg-cream rounded-2xl shadow-2xl border border-gold/20 w-full max-w-md p-6"
-        onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm"/>
+      <div
+        className={`relative bg-[#FDF8F0] rounded-t-3xl sm:rounded-2xl shadow-2xl border border-[#C9A84C]/20 w-full ${wide?'sm:max-w-2xl':'sm:max-w-md'} p-5 sm:p-6 max-h-[92vh] overflow-y-auto`}
+        onClick={e=>e.stopPropagation()}>
+        {/* drag handle on mobile */}
+        <div className="sm:hidden w-10 h-1 bg-[#C9A84C]/30 rounded-full mx-auto mb-4"/>
         <div className="flex items-center justify-between mb-5">
-          <h3 className=" text-lg font-semibold text-ink">{title}</h3>
-          <button onClick={onClose} className="text-muted hover:text-ink transition-colors"><X size={18} /></button>
+          <h3 className="text-base font-semibold text-[#0D0D0D]">{title}</h3>
+          <button onClick={onClose} className="text-[#8A8070] hover:text-[#0D0D0D] transition-colors p-1"><X size={16}/></button>
         </div>
         {children}
       </div>
@@ -42,74 +84,27 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   )
 }
 
-// ─── Add/Edit Asset Modals ──────────────────────────────────────────────────────
-
-function FundModal({ fund, onSave, onClose }: {
-  fund?: Fund; onSave: (f: Fund) => void; onClose: () => void
-}) {
-  const [form, setForm] = useState<Omit<Fund, 'id'>>({
-    name: fund?.name ?? '',
-    category: fund?.category ?? 'Equity',
-    sipAmount: fund?.sipAmount ?? 1000,
-    startDate: fund?.startDate ?? currentYearMonth(),
-    expectedReturn: fund?.expectedReturn ?? 12,
-    color: fund?.color ?? ASSET_COLORS[0],
-  })
-
-  const set = (k: keyof typeof form, v: any) => setForm((p) => ({ ...p, [k]: v }))
-
-  const handleSave = () => {
-    if (!form.name.trim()) return
-    onSave({ ...form, id: fund?.id ?? generateId() })
-  }
-
+// ─── Fund Modal ───────────────────────────────────────────────────────────────
+function FundModal({fund,onSave,onClose}) {
+  const [form,setForm]=useState({name:fund?.name??'',category:fund?.category??'Equity',sipAmount:fund?.sipAmount??1000,startDate:fund?.startDate??currentYearMonth(),expectedReturn:fund?.expectedReturn??12,color:fund?.color??ASSET_COLORS[0]})
+  const set=(k,v)=>setForm(p=>({...p,[k]:v}))
   return (
-    <Modal title={fund ? 'Edit Mutual Fund' : 'Add New Mutual Fund'} onClose={onClose}>
+    <Modal title={fund?'Edit Mutual Fund':'Add Mutual Fund'} onClose={onClose}>
       <div className="space-y-4">
-        <div>
-          <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Fund Name</label>
-          <input className="input-field" placeholder="e.g. Mirae Asset Large Cap" value={form.name}
-            onChange={(e) => set('name', e.target.value)} />
+        <Field label="Fund Name"><input className="inp" placeholder="e.g. Mirae Asset Large Cap" value={form.name} onChange={e=>set('name',e.target.value)}/></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Category"><select className="inp" value={form.category} onChange={e=>set('category',e.target.value)}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></Field>
+          <Field label="Monthly SIP (₹)"><input className="inp" type="number" min={100} step={100} value={form.sipAmount} onChange={e=>set('sipAmount',+e.target.value)}/></Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Category</label>
-            <select className="input-field" value={form.category} onChange={(e) => set('category', e.target.value)}>
-              {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Monthly SIP (₹)</label>
-            <input className="input-field" type="number" min={100} step={100} value={form.sipAmount}
-              onChange={(e) => set('sipAmount', Number(e.target.value))} />
-          </div>
+          <Field label="Start Month"><input className="inp" type="month" value={form.startDate} onChange={e=>set('startDate',e.target.value)}/></Field>
+          <Field label="Expected CAGR %"><input className="inp" type="number" min={1} max={50} step={0.5} value={form.expectedReturn} onChange={e=>set('expectedReturn',+e.target.value)}/></Field>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Start Month</label>
-            <input className="input-field" type="month" value={form.startDate}
-              onChange={(e) => set('startDate', e.target.value)} />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Expected CAGR %</label>
-            <input className="input-field" type="number" min={1} max={50} step={0.5} value={form.expectedReturn}
-              onChange={(e) => set('expectedReturn', Number(e.target.value))} />
-          </div>
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted mb-2 block uppercase tracking-wide">Color</label>
-          <div className="flex gap-2 flex-wrap">
-            {ASSET_COLORS.map((c) => (
-              <button key={c} onClick={() => set('color', c)}
-                className="w-7 h-7 rounded-full border-2 transition-all"
-                style={{ background: c, borderColor: form.color === c ? '#0D0D0D' : 'transparent' }} />
-            ))}
-          </div>
-        </div>
+        <ColorPicker value={form.color} onChange={c=>set('color',c)}/>
         <div className="flex gap-3 pt-2">
-          <button onClick={onClose} className="btn-outline flex-1">Cancel</button>
-          <button onClick={handleSave} className="btn-primary flex-1">
-            {fund ? 'Update' : 'Add Fund'}
+          <button className="btn-outline flex-1" onClick={onClose}>Cancel</button>
+          <button className="btn-primary flex-1" onClick={()=>{if(!form.name.trim())return;onSave({...form,id:fund?.id??generateId()})}}>
+            {fund?'Update':'Add Fund'}
           </button>
         </div>
       </div>
@@ -117,78 +112,28 @@ function FundModal({ fund, onSave, onClose }: {
   )
 }
 
-function ETFModal({ etf, onSave, onClose }: {
-  etf?: ETF; onSave: (e: ETF) => void; onClose: () => void
-}) {
-  const [form, setForm] = useState<Omit<ETF, 'id'>>({
-    name: etf?.name ?? '',
-    symbol: etf?.symbol ?? '',
-    category: etf?.category ?? 'Large Cap',
-    sipAmount: etf?.sipAmount ?? 1000,
-    startDate: etf?.startDate ?? currentYearMonth(),
-    expectedReturn: etf?.expectedReturn ?? 12,
-    color: etf?.color ?? ASSET_COLORS[2],
-  })
-
-  const set = (k: keyof typeof form, v: any) => setForm((p) => ({ ...p, [k]: v }))
-
-  const handleSave = () => {
-    if (!form.name.trim() || !form.symbol.trim()) return
-    onSave({ ...form, id: etf?.id ?? generateId() })
-  }
-
+// ─── ETF Modal ────────────────────────────────────────────────────────────────
+function ETFModal({etf,onSave,onClose}) {
+  const [form,setForm]=useState({name:etf?.name??'',symbol:etf?.symbol??'',category:etf?.category??'Large Cap',sipAmount:etf?.sipAmount??1000,startDate:etf?.startDate??currentYearMonth(),expectedReturn:etf?.expectedReturn??12,color:etf?.color??ASSET_COLORS[2]})
+  const set=(k,v)=>setForm(p=>({...p,[k]:v}))
   return (
-    <Modal title={etf ? 'Edit ETF' : 'Add New ETF'} onClose={onClose}>
+    <Modal title={etf?'Edit ETF':'Add ETF'} onClose={onClose}>
       <div className="space-y-4">
-        <div>
-          <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">ETF Name</label>
-          <input className="input-field" placeholder="e.g. Nippon India ETF Nifty50" value={form.name}
-            onChange={(e) => set('name', e.target.value)} />
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Symbol/Ticker</label>
-          <input className="input-field" placeholder="e.g. NIPPONETF" value={form.symbol}
-            onChange={(e) => set('symbol', e.target.value.toUpperCase())} />
+        <Field label="ETF Name"><input className="inp" placeholder="e.g. Nippon ETF Nifty50" value={form.name} onChange={e=>set('name',e.target.value)}/></Field>
+        <Field label="Symbol"><input className="inp" placeholder="e.g. NIPPONETF" value={form.symbol} onChange={e=>set('symbol',e.target.value.toUpperCase())}/></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Category"><select className="inp" value={form.category} onChange={e=>set('category',e.target.value)}>{ETF_CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></Field>
+          <Field label="Monthly SIP (₹)"><input className="inp" type="number" min={100} step={100} value={form.sipAmount} onChange={e=>set('sipAmount',+e.target.value)}/></Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Category</label>
-            <select className="input-field" value={form.category} onChange={(e) => set('category', e.target.value)}>
-              {ETF_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Monthly SIP (₹)</label>
-            <input className="input-field" type="number" min={100} step={100} value={form.sipAmount}
-              onChange={(e) => set('sipAmount', Number(e.target.value))} />
-          </div>
+          <Field label="Start Month"><input className="inp" type="month" value={form.startDate} onChange={e=>set('startDate',e.target.value)}/></Field>
+          <Field label="Expected CAGR %"><input className="inp" type="number" min={1} max={50} step={0.5} value={form.expectedReturn} onChange={e=>set('expectedReturn',+e.target.value)}/></Field>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Start Month</label>
-            <input className="input-field" type="month" value={form.startDate}
-              onChange={(e) => set('startDate', e.target.value)} />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Expected CAGR %</label>
-            <input className="input-field" type="number" min={1} max={50} step={0.5} value={form.expectedReturn}
-              onChange={(e) => set('expectedReturn', Number(e.target.value))} />
-          </div>
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted mb-2 block uppercase tracking-wide">Color</label>
-          <div className="flex gap-2 flex-wrap">
-            {ASSET_COLORS.map((c) => (
-              <button key={c} onClick={() => set('color', c)}
-                className="w-7 h-7 rounded-full border-2 transition-all"
-                style={{ background: c, borderColor: form.color === c ? '#0D0D0D' : 'transparent' }} />
-            ))}
-          </div>
-        </div>
+        <ColorPicker value={form.color} onChange={c=>set('color',c)}/>
         <div className="flex gap-3 pt-2">
-          <button onClick={onClose} className="btn-outline flex-1">Cancel</button>
-          <button onClick={handleSave} className="btn-primary flex-1">
-            {etf ? 'Update' : 'Add ETF'}
+          <button className="btn-outline flex-1" onClick={onClose}>Cancel</button>
+          <button className="btn-primary flex-1" onClick={()=>{if(!form.name.trim()||!form.symbol.trim())return;onSave({...form,id:etf?.id??generateId()})}}>
+            {etf?'Update':'Add ETF'}
           </button>
         </div>
       </div>
@@ -196,84 +141,29 @@ function ETFModal({ etf, onSave, onClose }: {
   )
 }
 
-function StockModal({ stock, onSave, onClose }: {
-  stock?: Stock; onSave: (s: Stock) => void; onClose: () => void
-}) {
-  const [form, setForm] = useState<Omit<Stock, 'id'>>({
-    name: stock?.name ?? '',
-    symbol: stock?.symbol ?? '',
-    category: stock?.category ?? 'Large Cap',
-    quantity: stock?.quantity ?? 0,
-    buyPrice: stock?.buyPrice ?? 0,
-    startDate: stock?.startDate ?? currentYearMonth(),
-    expectedReturn: stock?.expectedReturn ?? 15,
-    color: stock?.color ?? ASSET_COLORS[4],
-  })
-
-  const set = (k: keyof typeof form, v: any) => setForm((p) => ({ ...p, [k]: v }))
-
-  const handleSave = () => {
-    if (!form.name.trim() || !form.symbol.trim()) return
-    onSave({ ...form, id: stock?.id ?? generateId() })
-  }
-
+// ─── Stock Modal ──────────────────────────────────────────────────────────────
+function StockModal({stock,onSave,onClose}) {
+  const [form,setForm]=useState({name:stock?.name??'',symbol:stock?.symbol??'',category:stock?.category??'Large Cap',quantity:stock?.quantity??0,buyPrice:stock?.buyPrice??0,startDate:stock?.startDate??currentYearMonth(),expectedReturn:stock?.expectedReturn??15,color:stock?.color??ASSET_COLORS[4]})
+  const set=(k,v)=>setForm(p=>({...p,[k]:v}))
   return (
-    <Modal title={stock ? 'Edit Stock' : 'Add New Stock'} onClose={onClose}>
+    <Modal title={stock?'Edit Stock':'Add Stock'} onClose={onClose}>
       <div className="space-y-4">
-        <div>
-          <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Company Name</label>
-          <input className="input-field" placeholder="e.g. Reliance Industries" value={form.name}
-            onChange={(e) => set('name', e.target.value)} />
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Symbol/Ticker</label>
-          <input className="input-field" placeholder="e.g. RELIANCE" value={form.symbol}
-            onChange={(e) => set('symbol', e.target.value.toUpperCase())} />
+        <Field label="Company Name"><input className="inp" placeholder="e.g. Reliance Industries" value={form.name} onChange={e=>set('name',e.target.value)}/></Field>
+        <Field label="Symbol"><input className="inp" placeholder="e.g. RELIANCE" value={form.symbol} onChange={e=>set('symbol',e.target.value.toUpperCase())}/></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Category"><select className="inp" value={form.category} onChange={e=>set('category',e.target.value)}>{STOCK_CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></Field>
+          <Field label="Quantity"><input className="inp" type="number" min={1} value={form.quantity} onChange={e=>set('quantity',+e.target.value)}/></Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Category</label>
-            <select className="input-field" value={form.category} onChange={(e) => set('category', e.target.value)}>
-              {STOCK_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Quantity</label>
-            <input className="input-field" type="number" min={1} step={1} value={form.quantity}
-              onChange={(e) => set('quantity', Number(e.target.value))} />
-          </div>
+          <Field label="Buy Price (₹)"><input className="inp" type="number" min={1} step={0.01} value={form.buyPrice} onChange={e=>set('buyPrice',+e.target.value)}/></Field>
+          <Field label="Start Month"><input className="inp" type="month" value={form.startDate} onChange={e=>set('startDate',e.target.value)}/></Field>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Buy Price (₹)</label>
-            <input className="input-field" type="number" min={1} step={0.01} value={form.buyPrice}
-              onChange={(e) => set('buyPrice', Number(e.target.value))} />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Start Month</label>
-            <input className="input-field" type="month" value={form.startDate}
-              onChange={(e) => set('startDate', e.target.value)} />
-          </div>
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Expected CAGR %</label>
-          <input className="input-field" type="number" min={1} max={50} step={0.5} value={form.expectedReturn}
-            onChange={(e) => set('expectedReturn', Number(e.target.value))} />
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted mb-2 block uppercase tracking-wide">Color</label>
-          <div className="flex gap-2 flex-wrap">
-            {ASSET_COLORS.map((c) => (
-              <button key={c} onClick={() => set('color', c)}
-                className="w-7 h-7 rounded-full border-2 transition-all"
-                style={{ background: c, borderColor: form.color === c ? '#0D0D0D' : 'transparent' }} />
-            ))}
-          </div>
-        </div>
+        <Field label="Expected CAGR %"><input className="inp" type="number" min={1} max={50} step={0.5} value={form.expectedReturn} onChange={e=>set('expectedReturn',+e.target.value)}/></Field>
+        <ColorPicker value={form.color} onChange={c=>set('color',c)}/>
         <div className="flex gap-3 pt-2">
-          <button onClick={onClose} className="btn-outline flex-1">Cancel</button>
-          <button onClick={handleSave} className="btn-primary flex-1">
-            {stock ? 'Update' : 'Add Stock'}
+          <button className="btn-outline flex-1" onClick={onClose}>Cancel</button>
+          <button className="btn-primary flex-1" onClick={()=>{if(!form.name.trim()||!form.symbol.trim())return;onSave({...form,id:stock?.id??generateId()})}}>
+            {stock?'Update':'Add Stock'}
           </button>
         </div>
       </div>
@@ -281,640 +171,551 @@ function StockModal({ stock, onSave, onClose }: {
   )
 }
 
-// ─── Add Payment/Investment Modal ─────────────────────────────────────────
+// ─── Investment Modal (FIXED: shows asset name, not dropdown) ─────────────────
+function InvestmentModal({assetType,funds,etfs,stocks,payment,preSelectedAssetId,onSave,onClose}) {
+  const getAssets=()=>assetType==='mutual-funds'?funds:assetType==='etfs'?etfs:stocks
+  const assets=getAssets()
 
-function InvestmentModal({
-  assetType, funds, etfs, stocks, payment, onSave, onClose
-}: {
-  assetType: AssetType;
-  funds: Fund[];
-  etfs: ETF[];
-  stocks: Stock[];
-  payment?: Payment;
-  onSave: (p: Payment) => void;
-  onClose: () => void
-}) {
-  const getAssets = () => {
-    switch (assetType) {
-      case 'mutual-funds': return funds;
-      case 'etfs': return etfs;
-      case 'stocks': return stocks;
-      default: return [];
-    }
-  }
+  // Use preSelectedAssetId if provided (from clicking + on a specific asset)
+  const defaultAssetId=preSelectedAssetId||payment?.assetId||assets[0]?.id||''
+  const lockedAsset=preSelectedAssetId?assets.find(a=>a.id===preSelectedAssetId):null
 
-  const getAssetName = (asset: any) => {
-    if ('symbol' in asset) return `${asset.name} (${asset.symbol})`;
-    return asset.name;
-  }
-
-  const getDefaultAmount = (asset: any) => {
-    if ('sipAmount' in asset) return asset.sipAmount;
-    if ('quantity' in asset) return asset.quantity * asset.buyPrice;
-    return 1000;
-  }
-
-  const [form, setForm] = useState({
-    assetId: payment?.assetId ?? (getAssets()[0]?.id ?? ''),
-    assetType: payment?.assetType ?? assetType,
-    date: payment?.date ?? currentYearMonth(),
-    amount: payment?.amount ?? (getAssets()[0] ? getDefaultAmount(getAssets()[0]) : 1000),
-    quantity: payment?.quantity ?? '',
-    price: payment?.price ?? '',
-    notes: payment?.notes ?? '',
+  const [form,setForm]=useState({
+    assetId:defaultAssetId,
+    date:payment?.date??currentYearMonth(),
+    amount:payment?.amount??(assets.find(a=>a.id===defaultAssetId)?.sipAmount??1000),
+    quantity:payment?.quantity??'',
+    price:payment?.price??'',
+    nav:payment?.nav??'',
+    units:payment?.units??'',
+    notes:payment?.notes??'',
   })
+  const set=(k,v)=>setForm(p=>({...p,[k]:v}))
 
-  const set = (k: keyof typeof form, v: any) => setForm((p) => ({ ...p, [k]: v }))
+  const selectedAsset=assets.find(a=>a.id===form.assetId)
+  const isMF=assetType==='mutual-funds'
+  const isStock=assetType==='stocks'
+  const isETF=assetType==='etfs'
 
-  const handleAssetChange = (id: string) => {
-    const asset = getAssets().find((x) => x.id === id)
-    set('assetId', id)
-    if (asset && !payment) {
-      if ('sipAmount' in asset) set('amount', asset.sipAmount)
-      if ('quantity' in asset && asset.quantity && asset.buyPrice) {
-        set('amount', asset.quantity * asset.buyPrice)
-        set('quantity', asset.quantity)
-        set('price', asset.buyPrice)
-      }
-    }
+  // Auto-calc units from NAV for MF
+  const handleNavChange=(v)=>{
+    set('nav',v)
+    if(v&&form.amount) set('units',(+form.amount/+v).toFixed(3))
+  }
+  const handleAmountChange=(v)=>{
+    set('amount',v)
+    if(form.nav&&v) set('units',(+v/+form.nav).toFixed(3))
+  }
+  // Auto-calc amount from qty*price for stocks/etfs
+  const handleQtyChange=(v)=>{
+    set('quantity',v)
+    if(form.price&&v) set('amount',(+v*+form.price).toFixed(2))
+  }
+  const handlePriceChange=(v)=>{
+    set('price',v)
+    if(form.quantity&&v) set('amount',(+form.quantity*+v).toFixed(2))
   }
 
-  const handleSave = () => {
-    if (!form.assetId || !form.date) return
-    const p: Payment = {
-      id: payment?.id ?? generateId(),
-      assetId: form.assetId,
-      assetType: form.assetType,
-      date: form.date,
-      amount: Number(form.amount),
-    }
-    if (form.quantity) p.quantity = Number(form.quantity)
-    if (form.price) p.price = Number(form.price)
-    if (form.notes) p.notes = String(form.notes)
+  const handleSave=()=>{
+    if(!form.assetId||!form.date) return
+    const p={id:payment?.id??generateId(),assetId:form.assetId,assetType,date:form.date,amount:+form.amount}
+    if(form.quantity) p.quantity=+form.quantity
+    if(form.price) p.price=+form.price
+    if(form.nav) p.nav=+form.nav
+    if(form.units) p.units=+form.units
+    if(form.notes) p.notes=String(form.notes)
     onSave(p)
   }
 
-  const assetTypeLabel = assetType === 'mutual-funds' ? 'Fund' : assetType === 'etfs' ? 'ETF' : 'Stock'
+  const assetLabel=isMF?'Fund':isETF?'ETF':'Stock'
 
   return (
-    <Modal title={payment ? 'Edit Investment' : `Log ${assetTypeLabel} Investment`} onClose={onClose}>
+    <Modal title={payment?'Edit Investment':`Log ${assetLabel} Investment`} onClose={onClose}>
       <div className="space-y-4">
-        <div>
-          <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">{assetTypeLabel}</label>
-          <select className="input-field" value={form.assetId} onChange={(e) => handleAssetChange(e.target.value)}>
-            {getAssets().map((asset) => <option key={asset.id} value={asset.id}>{getAssetName(asset)}</option>)}
-          </select>
-        </div>
+        {/* Asset display — locked name if pre-selected, dropdown if not */}
+        <Field label={assetLabel}>
+          {lockedAsset ? (
+            <div className="inp flex items-center gap-2 cursor-not-allowed bg-[#F5F0E8]">
+              <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{background:lockedAsset.color}}/>
+              <span className="truncate font-medium text-[#0D0D0D]">{lockedAsset.name}</span>
+              {'symbol' in lockedAsset && <span className="text-[#8A8070] text-xs shrink-0">({lockedAsset.symbol})</span>}
+            </div>
+          ) : (
+            <select className="inp" value={form.assetId} onChange={e=>set('assetId',e.target.value)}>
+              {assets.map(a=><option key={a.id} value={a.id}>{a.name}{'symbol' in a?` (${a.symbol})`:''}</option>)}
+            </select>
+          )}
+        </Field>
+
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Month</label>
-            <input className="input-field" type="month" value={form.date}
-              onChange={(e) => set('date', e.target.value)} />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Amount (₹)</label>
-            <input className="input-field" type="number" min={1} step={100} value={form.amount}
-              onChange={(e) => set('amount', e.target.value)} />
-          </div>
+          <Field label="Month"><input className="inp" type="month" value={form.date} onChange={e=>set('date',e.target.value)}/></Field>
+          <Field label="Amount (₹)"><input className="inp" type="number" min={1} step={100} value={form.amount} onChange={e=>handleAmountChange(e.target.value)}/></Field>
         </div>
-        {(assetType === 'stocks' || assetType === 'etfs') && (
+
+        {/* Mutual Fund: NAV + Units */}
+        {isMF && (
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Quantity</label>
-              <input className="input-field" type="number" min={1} step={1} placeholder="e.g. 10"
-                value={form.quantity as string} onChange={(e) => set('quantity', e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Price per share (₹)</label>
-              <input className="input-field" type="number" step="0.01" placeholder="e.g. 2450.50"
-                value={form.price as string} onChange={(e) => set('price', e.target.value)} />
-            </div>
+            <Field label="NAV (₹)">
+              <input className="inp" type="number" step="0.001" placeholder="e.g. 45.320" value={form.nav} onChange={e=>handleNavChange(e.target.value)}/>
+            </Field>
+            <Field label="Units Allotted">
+              <input className="inp" type="number" step="0.001" placeholder="Auto-calc" value={form.units} onChange={e=>set('units',e.target.value)}/>
+            </Field>
           </div>
         )}
-        <div>
-          <label className="text-xs font-medium text-muted mb-1.5 block uppercase tracking-wide">Notes</label>
-          <input className="input-field" placeholder="optional" value={form.notes as string}
-            onChange={(e) => set('notes', e.target.value)} />
-        </div>
+
+        {/* ETF: Stock Price + Units */}
+        {isETF && (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Market Price (₹)">
+              <input className="inp" type="number" step="0.01" placeholder="e.g. 230.50" value={form.price} onChange={e=>handlePriceChange(e.target.value)}/>
+            </Field>
+            <Field label="Units / Qty">
+              <input className="inp" type="number" step="1" placeholder="e.g. 5" value={form.quantity} onChange={e=>handleQtyChange(e.target.value)}/>
+            </Field>
+          </div>
+        )}
+
+        {/* Stock: Price + Qty */}
+        {isStock && (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Buy Price (₹)">
+              <input className="inp" type="number" step="0.01" placeholder="e.g. 2450.50" value={form.price} onChange={e=>handlePriceChange(e.target.value)}/>
+            </Field>
+            <Field label="Quantity">
+              <input className="inp" type="number" step="1" placeholder="e.g. 10" value={form.quantity} onChange={e=>handleQtyChange(e.target.value)}/>
+            </Field>
+          </div>
+        )}
+
+        {/* Show auto-calc hint */}
+        {isMF && form.nav && form.amount && (
+          <p className="text-xs text-[#1A5C3A] bg-[#1A5C3A]/8 rounded-lg px-3 py-1.5">
+            📊 {(+form.amount/+form.nav).toFixed(3)} units @ ₹{form.nav} NAV
+          </p>
+        )}
+        {(isETF||isStock) && form.price && form.quantity && (
+          <p className="text-xs text-[#1A5C3A] bg-[#1A5C3A]/8 rounded-lg px-3 py-1.5">
+            📊 {form.quantity} units × ₹{form.price} = ₹{(+form.quantity*+form.price).toFixed(2)}
+          </p>
+        )}
+
+        <Field label="Notes"><input className="inp" placeholder="optional" value={form.notes} onChange={e=>set('notes',e.target.value)}/></Field>
         <div className="flex gap-3 pt-2">
-          <button onClick={onClose} className="btn-outline flex-1">Cancel</button>
-          <button onClick={handleSave} className="btn-primary flex-1">
-            {payment ? 'Update' : 'Log Investment'}
-          </button>
+          <button className="btn-outline flex-1" onClick={onClose}>Cancel</button>
+          <button className="btn-primary flex-1" onClick={handleSave}>{payment?'Update':'Log Investment'}</button>
         </div>
       </div>
     </Modal>
   )
 }
 
-// ─── Projection Calculator ────────────────────────────────────────────────────
-
-function ProjectionModal({ funds, etfs, stocks, payments, onClose }: {
-  funds: Fund[]; etfs: ETF[]; stocks: Stock[]; payments: Payment[]; onClose: () => void
-}) {
-  const [years, setYears] = useState(10)
-  const allAssets = [...funds, ...etfs, ...stocks]
-
-  const getMonthlyAmount = (asset: any) => {
-    if ('sipAmount' in asset) return asset.sipAmount;
-    if ('quantity' in asset && asset.quantity) return (asset.quantity * asset.buyPrice) / 12;
-    return 0;
-  }
-
-  const data = Array.from({ length: years }, (_, i) => {
-    const month = (i + 1) * 12
-    const row: any = { year: `Yr ${i + 1}` }
-    let totalInvested = 0
-    let totalValue = 0
-
-    allAssets.forEach((asset) => {
-      const monthlyAmt = getMonthlyAmount(asset)
-      const invested = monthlyAmt * month
-      const fv = calcFutureValue(monthlyAmt, month, asset.expectedReturn)
-      row[asset.name] = Math.round(fv)
-      totalInvested += invested
-      totalValue += fv
-    })
-
-    row['Total Invested'] = Math.round(totalInvested)
-    row['Projected Value'] = Math.round(totalValue)
-    return row
+// ─── Projection Modal ─────────────────────────────────────────────────────────
+function ProjectionModal({funds,etfs,stocks,onClose}) {
+  const [years,setYears]=useState(10)
+  const allAssets=[...funds,...etfs,...stocks]
+  const getMonthly=a=>'sipAmount' in a?a.sipAmount:a.quantity&&a.buyPrice?(a.quantity*a.buyPrice)/12:0
+  const data=Array.from({length:years},(_,i)=>{
+    const month=(i+1)*12; let ti=0,tv=0
+    allAssets.forEach(a=>{const m=getMonthly(a);ti+=m*month;tv+=calcFutureValue(m,month,a.expectedReturn)})
+    return {year:`Yr ${i+1}`,'Total Invested':Math.round(ti),'Projected Value':Math.round(tv)}
   })
+  const total=allAssets.reduce((s,a)=>s+getMonthly(a),0)
+  const proj=data[years-1]?.['Projected Value']??0
+  return (
+    <Modal title="Portfolio Projection" onClose={onClose} wide>
+      <div className="flex flex-wrap gap-2 mb-4">
+        <span className="text-sm text-[#8A8070] self-center">Project for</span>
+        {[3,5,10,15,20,25,30].map(y=>(
+          <button key={y} onClick={()=>setYears(y)} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${years===y?'bg-[#C9A84C] text-[#0D0D0D]':'bg-[#F5F0E8] text-[#8A8070] hover:text-[#0D0D0D]'}`}>{y}Y</button>
+        ))}
+      </div>
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        {[['Monthly SIP','₹'+total.toLocaleString('en-IN'),'text-[#1A5C3A]'],['Total Invested ({y}Y)'.replace('{y}',years),'₹'+(total*years*12).toLocaleString('en-IN'),'text-[#0D0D0D]'],['Projected Value','₹'+Math.round(proj/100000).toLocaleString('en-IN')+'L','text-[#8B6914]']].map(([l,v,c])=>(
+          <div key={l} className="bg-[#F5F0E8] rounded-xl p-3"><p className="text-xs text-[#8A8070]">{l}</p><p className={`font-bold text-lg ${c}`}>{v}</p></div>
+        ))}
+      </div>
+      <ResponsiveContainer width="100%" height={200}>
+        <AreaChart data={data}>
+          <defs>
+            <linearGradient id="gI" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#8B6914" stopOpacity={0.3}/><stop offset="95%" stopColor="#8B6914" stopOpacity={0}/></linearGradient>
+            <linearGradient id="gV" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#1A5C3A" stopOpacity={0.4}/><stop offset="95%" stopColor="#1A5C3A" stopOpacity={0}/></linearGradient>
+          </defs>
+          <XAxis dataKey="year" tick={{fontSize:11,fill:'#8A8070'}}/>
+          <YAxis tickFormatter={v=>`₹${(v/100000).toFixed(0)}L`} tick={{fontSize:11,fill:'#8A8070'}}/>
+          <Tooltip formatter={(v)=>[`₹${Number(v).toLocaleString('en-IN')}`,'']} contentStyle={{background:'#FDF8F0',border:'1px solid #C9A84C33',borderRadius:12}}/>
+          <Area type="monotone" dataKey="Total Invested" stroke="#8B6914" fill="url(#gI)" strokeWidth={2}/>
+          <Area type="monotone" dataKey="Projected Value" stroke="#1A5C3A" fill="url(#gV)" strokeWidth={2}/>
+        </AreaChart>
+      </ResponsiveContainer>
+      <p className="text-xs text-[#8A8070] text-center mt-2">Estimates based on expected CAGR. Actual returns may vary.</p>
+    </Modal>
+  )
+}
 
-  const totalMonthly = allAssets.reduce((s, asset) => s + getMonthlyAmount(asset), 0)
-  const projectedAtEnd = data[years - 1]?.['Projected Value'] ?? 0
+// ─── Global Search Modal ──────────────────────────────────────────────────────
+function GlobalSearchModal({data,onClose,onNavigate}) {
+  const [q,setQ]=useState('')
+  const allAssets=[
+    ...data.funds.map(f=>({...f,assetType:'mutual-funds',typeName:'Mutual Fund'})),
+    ...data.etfs.map(e=>({...e,assetType:'etfs',typeName:'ETF'})),
+    ...data.stocks.map(s=>({...s,assetType:'stocks',typeName:'Stock'}))
+  ]
+  const months=[...new Set(data.payments.map(p=>p.date))].sort().reverse()
+  const lq=q.toLowerCase()
+  const filteredAssets=q.length>1?allAssets.filter(a=>a.name.toLowerCase().includes(lq)||a.category?.toLowerCase().includes(lq)||a.symbol?.toLowerCase().includes(lq)):[]
+  const filteredMonths=q.length>1?months.filter(m=>getMonthLabel(m).toLowerCase().includes(lq)):[]
+
+  const go=(tab,sub)=>{onNavigate(tab,sub);onClose()}
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-ink/40 backdrop-blur-sm" />
-      <div className="relative bg-cream rounded-2xl shadow-2xl border border-gold/20 w-full max-w-2xl p-6"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-5">
-          <h3 className=" text-lg font-semibold text-ink">Portfolio Projection Calculator</h3>
-          <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm"/>
+      <div className="relative bg-[#FDF8F0] rounded-2xl shadow-2xl border border-[#C9A84C]/20 w-full max-w-lg" onClick={e=>e.stopPropagation()}>
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-[#C9A84C]/15">
+          <Search size={16} className="text-[#8A8070] shrink-0"/>
+          <input
+            autoFocus
+            className="flex-1 bg-transparent text-[#0D0D0D] text-sm outline-none placeholder-[#8A8070]"
+            placeholder="Search by fund name, symbol, month..."
+            value={q} onChange={e=>setQ(e.target.value)}
+          />
+          {q&&<button onClick={()=>setQ('')} className="text-[#8A8070]"><X size={14}/></button>}
         </div>
-
-        <div className="flex items-center gap-4 mb-5">
-          <span className="text-sm text-muted">Project for</span>
-          <div className="flex items-center gap-2 flex-wrap">
-            {[3, 5, 10, 15, 20, 25, 30].map((y) => (
-              <button key={y} onClick={() => setYears(y)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${years === y ? 'bg-gold text-ink' : 'bg-paper text-muted hover:text-ink'}`}>
-                {y}Y
+        {q.length<2 ? (
+          <div className="px-4 py-6 text-center text-sm text-[#8A8070]">Type at least 2 characters to search</div>
+        ) : filteredAssets.length===0&&filteredMonths.length===0 ? (
+          <div className="px-4 py-6 text-center text-sm text-[#8A8070]">No results found for "{q}"</div>
+        ) : (
+          <div className="max-h-80 overflow-y-auto divide-y divide-[#C9A84C]/10">
+            {filteredAssets.map(a=>(
+              <button key={a.id} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F5F0E8] text-left transition-colors"
+                onClick={()=>go(a.assetType,'list')}>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{background:a.color+'22'}}>
+                  <div className="w-2 h-2 rounded-full" style={{background:a.color}}/>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-[#0D0D0D] truncate">{a.name}</p>
+                  <p className="text-xs text-[#8A8070]">{a.typeName} · {a.category}</p>
+                </div>
+                <span className="text-xs text-[#C9A84C] shrink-0">View →</span>
               </button>
             ))}
+            {filteredMonths.map(m=>{
+              const mPayments=data.payments.filter(p=>p.date===m)
+              const total=mPayments.reduce((s,p)=>s+p.amount,0)
+              return (
+                <button key={m} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F5F0E8] text-left transition-colors"
+                  onClick={()=>go('dashboard','')}>
+                  <div className="w-8 h-8 rounded-lg bg-[#1A5C3A]/10 flex items-center justify-center shrink-0">
+                    <Calendar size={14} className="text-[#1A5C3A]"/>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-[#0D0D0D]">{getMonthLabel(m)}</p>
+                    <p className="text-xs text-[#8A8070]">{mPayments.length} investments · ₹{total.toLocaleString('en-IN')}</p>
+                  </div>
+                  <span className="text-xs text-[#C9A84C] shrink-0">View →</span>
+                </button>
+              )
+            })}
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-5">
-          <div className="stat-card">
-            <span className="text-xs text-muted uppercase tracking-wide">Monthly Investment</span>
-            <span className=" font-bold text-xl text-emerald">₹{totalMonthly.toLocaleString('en-IN')}</span>
-          </div>
-          <div className="stat-card">
-            <span className="text-xs text-muted uppercase tracking-wide">Total Invested ({years}Y)</span>
-            <span className=" font-bold text-xl text-ink">₹{(totalMonthly * years * 12).toLocaleString('en-IN')}</span>
-          </div>
-          <div className="stat-card">
-            <span className="text-xs text-muted uppercase tracking-wide">Projected Value</span>
-            <span className=" font-bold text-xl text-gold-dark">₹{Math.round(projectedAtEnd / 100000).toLocaleString('en-IN')}L</span>
-          </div>
-        </div>
-
-        <ResponsiveContainer width="100%" height={220}>
-          <AreaChart data={data}>
-            <defs>
-              <linearGradient id="gInvested" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#8B6914" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#8B6914" stopOpacity={0} />
-              </linearGradient>
-              <linearGradient id="gValue" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#1A5C3A" stopOpacity={0.4} />
-                <stop offset="95%" stopColor="#1A5C3A" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <XAxis dataKey="year" tick={{ fontSize: 11, fill: '#8A8070' }} />
-            <YAxis tickFormatter={(v) => `₹${(v / 100000).toFixed(0)}L`} tick={{ fontSize: 11, fill: '#8A8070' }} />
-            <Tooltip formatter={(v: any) => [`₹${Number(v).toLocaleString('en-IN')}`, '']}
-              contentStyle={{ background: '#FDF8F0', border: '1px solid #C9A84C33', borderRadius: 12 }} />
-            <Area type="monotone" dataKey="Total Invested" stroke="#8B6914" fill="url(#gInvested)" strokeWidth={2} />
-            <Area type="monotone" dataKey="Projected Value" stroke="#1A5C3A" fill="url(#gValue)" strokeWidth={2} />
-          </AreaChart>
-        </ResponsiveContainer>
-        <p className="text-xs text-muted text-center mt-2">Projections are estimates based on expected CAGR. Actual returns may vary.</p>
+        )}
       </div>
     </div>
   )
 }
 
+// ─── Small helpers ────────────────────────────────────────────────────────────
+function Field({label,children}) {
+  return <div><label className="text-xs font-medium text-[#8A8070] mb-1.5 block uppercase tracking-wide">{label}</label>{children}</div>
+}
+function ColorPicker({value,onChange}) {
+  return (
+    <div>
+      <label className="text-xs font-medium text-[#8A8070] mb-2 block uppercase tracking-wide">Color</label>
+      <div className="flex gap-2 flex-wrap">
+        {ASSET_COLORS.map(c=>(
+          <button key={c} onClick={()=>onChange(c)}
+            className="w-7 h-7 rounded-full border-2 transition-all"
+            style={{background:c,borderColor:value===c?'#0D0D0D':'transparent'}}/>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── SearchBar for list/history ───────────────────────────────────────────────
+function SearchBar({value,onChange,placeholder}) {
+  return (
+    <div className="relative">
+      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8A8070]"/>
+      <input
+        className="w-full pl-9 pr-3 py-2 bg-[#F5F0E8] border border-[#C9A84C]/20 rounded-xl text-sm text-[#0D0D0D] placeholder-[#8A8070] focus:outline-none focus:border-[#C9A84C] transition-all"
+        placeholder={placeholder}
+        value={value}
+        onChange={e=>onChange(e.target.value)}
+      />
+      {value&&<button onClick={()=>onChange('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8A8070]"><X size={12}/></button>}
+    </div>
+  )
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
-function Logo({ size = 24 }: { size?: number }) {
-    return (
-      <svg width={size} height={size} viewBox="0 0 100 100" fill="none">
-        <rect width="100" height="100" rx="22" fill="bg-emerald" />
-        <polyline points="14,73 32,48 50,61 67,32 85,19"
-          stroke="white" strokeWidth="7" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="67" cy="32" r="6" fill="white" />
-        <circle cx="85" cy="19" r="6" fill="#FCD34D" />
-      </svg>
-    )
-  }
-export default function Home() {
-  const [data, setData] = useState<TrackerData>(emptyData())
-  const [loaded, setLoaded] = useState(false)
-  const [mainTab, setMainTab] = useState<'dashboard' | 'mutual-funds' | 'etfs' | 'stocks'>('dashboard')
-  const [subTab, setSubTab] = useState<'list' | 'investments'>('list')
+export default function App() {
+  const [data,setData]=useState(emptyData())
+  const [loaded,setLoaded]=useState(false)
+  const [isClient,setIsClient]=useState(false)
+  const [mainTab,setMainTab]=useState('dashboard')
+  const [subTab,setSubTab]=useState('list')
+  const [listSearch,setListSearch]=useState('')
+  const [histSearch,setHistSearch]=useState('')
+  const [showGlobalSearch,setShowGlobalSearch]=useState(false)
 
-  // Modal states
-  const [showFundModal, setShowFundModal] = useState(false)
-  const [editFund, setEditFund] = useState<Fund | undefined>()
-  const [showETFModal, setShowETFModal] = useState(false)
-  const [editETF, setEditETF] = useState<ETF | undefined>()
-  const [showStockModal, setShowStockModal] = useState(false)
-  const [editStock, setEditStock] = useState<Stock | undefined>()
-  const [showInvestmentModal, setShowInvestmentModal] = useState(false)
-  const [investmentAssetType, setInvestmentAssetType] = useState<AssetType>('mutual-funds')
-  const [editPayment, setEditPayment] = useState<Payment | undefined>()
-  const [showProjection, setShowProjection] = useState(false)
+  // Modals
+  const [showFundModal,setShowFundModal]=useState(false)
+  const [editFund,setEditFund]=useState()
+  const [showETFModal,setShowETFModal]=useState(false)
+  const [editETF,setEditETF]=useState()
+  const [showStockModal,setShowStockModal]=useState(false)
+  const [editStock,setEditStock]=useState()
+  const [showInvestModal,setShowInvestModal]=useState(false)
+  const [investAssetType,setInvestAssetType]=useState('mutual-funds')
+  const [editPayment,setEditPayment]=useState()
+  const [preSelectedAssetId,setPreSelectedAssetId]=useState(null)
+  const [showProjection,setShowProjection]=useState(false)
 
-  const fileRef = useRef<HTMLInputElement>(null)
-  const [isClient, setIsClient] = useState(false)
+  const fileRef=useRef()
 
-  // Add this useEffect right after your other useEffects
-  useEffect(() => {
-    setIsClient(true)
-  }, [])
+  useEffect(()=>setIsClient(true),[])
+  useEffect(()=>{
+    if(typeof window==='undefined') return
+    const saved=localStorage.getItem(STORAGE_KEY)
+    if(saved){try{setData(JSON.parse(saved));setLoaded(true)}catch{}}
+  },[])
 
-  // Load data from localStorage on mount
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const savedData = localStorage.getItem(STORAGE_KEY)
-      if (savedData) {
-        try {
-          const parsedData = JSON.parse(savedData)
-          setData(parsedData)
-          setLoaded(true)
-        } catch (error) {
-          console.error('Failed to parse saved data:', error)
-          setLoaded(false)
-        }
-      } else {
-        setLoaded(false)
-      }
-    }
-  }, [])
+  // Keyboard shortcut for global search
+  useEffect(()=>{
+    const handler=e=>{if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();setShowGlobalSearch(true)}}
+    window.addEventListener('keydown',handler)
+    return ()=>window.removeEventListener('keydown',handler)
+  },[])
 
-  // Save data to localStorage whenever it changes
-  const updateData = useCallback((newData: TrackerData | ((prev: TrackerData) => TrackerData)) => {
-    setData((prevData) => {
-      const updatedData = typeof newData === 'function' ? newData(prevData) : newData
-      // Save to localStorage (only on client-side)
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedData))
-      }
-      return updatedData
+  const updateData=useCallback(fn=>{
+    setData(prev=>{
+      const next=typeof fn==='function'?fn(prev):fn
+      if(typeof window!=='undefined') localStorage.setItem(STORAGE_KEY,JSON.stringify(next))
+      return next
     })
-  }, [])
+  },[])
 
-  // ── File handling ──
-  const handleUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      try {
-        const parsed = parseExcel(ev.target!.result as ArrayBuffer)
-        updateData(parsed)
-        setLoaded(true)
-      } catch {
-        alert('Could not read the Excel file. Make sure it\'s a valid investment-tracker.xlsx file.')
-      }
-    }
-    reader.readAsArrayBuffer(file)
-    e.target.value = ''
-  }, [updateData])
+  const handleUpload=useCallback(e=>{
+    const file=e.target.files?.[0]; if(!file) return
+    const reader=new FileReader()
+    reader.onload=ev=>{try{updateData(parseExcel(ev.target.result));setLoaded(true)}catch{alert('Invalid file')}}
+    reader.readAsArrayBuffer(file); e.target.value=''
+  },[updateData])
 
-  const handleExport = () => exportExcel(data)
+  const startFresh=()=>{updateData(emptyData());setLoaded(true)}
 
-  const startFresh = () => {
-    updateData(emptyData())
-    setLoaded(true)
-  }
+  // CRUD
+  const saveFund=f=>{updateData(d=>({...d,funds:d.funds.find(x=>x.id===f.id)?d.funds.map(x=>x.id===f.id?f:x):[...d.funds,f]}));setShowFundModal(false);setEditFund()}
+  const deleteFund=id=>{if(!confirm('Delete fund and all investments?'))return;updateData(d=>({...d,funds:d.funds.filter(f=>f.id!==id),payments:d.payments.filter(p=>!(p.assetId===id&&p.assetType==='mutual-funds'))}))}
+  const saveETF=e=>{updateData(d=>({...d,etfs:d.etfs.find(x=>x.id===e.id)?d.etfs.map(x=>x.id===e.id?e:x):[...d.etfs,e]}));setShowETFModal(false);setEditETF()}
+  const deleteETF=id=>{if(!confirm('Delete ETF and all investments?'))return;updateData(d=>({...d,etfs:d.etfs.filter(e=>e.id!==id),payments:d.payments.filter(p=>!(p.assetId===id&&p.assetType==='etfs'))}))}
+  const saveStock=s=>{updateData(d=>({...d,stocks:d.stocks.find(x=>x.id===s.id)?d.stocks.map(x=>x.id===s.id?s:x):[...d.stocks,s]}));setShowStockModal(false);setEditStock()}
+  const deleteStock=id=>{if(!confirm('Delete stock and all investments?'))return;updateData(d=>({...d,stocks:d.stocks.filter(s=>s.id!==id),payments:d.payments.filter(p=>!(p.assetId===id&&p.assetType==='stocks'))}))}
+  const savePayment=p=>{updateData(d=>({...d,payments:d.payments.find(x=>x.id===p.id)?d.payments.map(x=>x.id===p.id?p:x):[...d.payments,p]}));setShowInvestModal(false);setEditPayment();setPreSelectedAssetId(null)}
+  const deletePayment=id=>updateData(d=>({...d,payments:d.payments.filter(p=>p.id!==id)}))
 
+  const openInvest=(assetType,assetId=null)=>{setInvestAssetType(assetType);setPreSelectedAssetId(assetId);setEditPayment();setShowInvestModal(true)}
 
+  // Derived
+  const totalInvested=calcTotalInvested(data.payments)
+  const totalMonthly=[...data.funds,...data.etfs].reduce((s,a)=>s+('sipAmount' in a?a.sipAmount:0),0)
+  const totalStockValue=data.stocks.reduce((s,s2)=>s+(s2.quantity*s2.buyPrice),0)
 
-  // ── Funds CRUD ──
-  const saveFund = (f: Fund) => {
-    updateData((d) => ({
-      ...d,
-      funds: d.funds.find((x) => x.id === f.id)
-        ? d.funds.map((x) => x.id === f.id ? f : x)
-        : [...d.funds, f],
-    }))
-    setShowFundModal(false); setEditFund(undefined)
-  }
-  const deleteFund = (id: string) => {
-    if (!confirm('Delete this fund and all its investments?')) return
-    updateData((d) => ({
-      ...d,
-      funds: d.funds.filter((f) => f.id !== id),
-      payments: d.payments.filter((p) => !(p.assetId === id && p.assetType === 'mutual-funds'))
-    }))
-  }
+  const getCurrentAssets=()=>mainTab==='mutual-funds'?data.funds:mainTab==='etfs'?data.etfs:mainTab==='stocks'?data.stocks:[]
+  const getCurrentPayments=()=>data.payments.filter(p=>p.assetType===mainTab)
 
-  // ── ETFs CRUD ──
-  const saveETF = (e: ETF) => {
-    updateData((d) => ({
-      ...d,
-      etfs: d.etfs.find((x) => x.id === e.id)
-        ? d.etfs.map((x) => x.id === e.id ? e : x)
-        : [...d.etfs, e],
-    }))
-    setShowETFModal(false); setEditETF(undefined)
-  }
-  const deleteETF = (id: string) => {
-    if (!confirm('Delete this ETF and all its investments?')) return
-    updateData((d) => ({
-      ...d,
-      etfs: d.etfs.filter((e) => e.id !== id),
-      payments: d.payments.filter((p) => !(p.assetId === id && p.assetType === 'etfs'))
-    }))
-  }
+  // Filtered assets (list tab search)
+  const filteredAssets=useMemo(()=>{
+    const assets=getCurrentAssets()
+    if(!listSearch) return assets
+    const lq=listSearch.toLowerCase()
+    return assets.filter(a=>a.name.toLowerCase().includes(lq)||a.category?.toLowerCase().includes(lq)||a.symbol?.toLowerCase().includes(lq))
+  },[mainTab,data,listSearch])
 
-  // ── Stocks CRUD ──
-  const saveStock = (s: Stock) => {
-    updateData((d) => ({
-      ...d,
-      stocks: d.stocks.find((x) => x.id === s.id)
-        ? d.stocks.map((x) => x.id === s.id ? s : x)
-        : [...d.stocks, s],
-    }))
-    setShowStockModal(false); setEditStock(undefined)
-  }
-  const deleteStock = (id: string) => {
-    if (!confirm('Delete this stock and all its investments?')) return
-    updateData((d) => ({
-      ...d,
-      stocks: d.stocks.filter((s) => s.id !== id),
-      payments: d.payments.filter((p) => !(p.assetId === id && p.assetType === 'stocks'))
-    }))
-  }
+  // Filtered payments (history tab search)
+  const filteredPayments=useMemo(()=>{
+    const payments=getCurrentPayments()
+    if(!histSearch) return payments
+    const lq=histSearch.toLowerCase()
+    const assets=getCurrentAssets()
+    return payments.filter(p=>{
+      const asset=assets.find(a=>a.id===p.assetId)
+      return asset?.name.toLowerCase().includes(lq)||
+        p.date.includes(lq)||
+        getMonthLabel(p.date).toLowerCase().includes(lq)||
+        p.notes?.toLowerCase().includes(lq)
+    })
+  },[mainTab,data,histSearch])
 
-  // ── Payments CRUD ──
-  const savePayment = (p: Payment) => {
-    updateData((d) => ({
-      ...d,
-      payments: d.payments.find((x) => x.id === p.id)
-        ? d.payments.map((x) => x.id === p.id ? p : x)
-        : [...d.payments, p],
-    }))
-    setShowInvestmentModal(false); setEditPayment(undefined)
-  }
-  const deletePayment = (id: string) => {
-    updateData((d) => ({ ...d, payments: d.payments.filter((p) => p.id !== id) }))
-  }
+  const pieData=[...data.funds,...data.etfs,...data.stocks].map(a=>({
+    name:a.name,
+    value:calcTotalInvested(data.payments,a.id,a.assetType||(('quantity' in a&&'symbol' in a)?'stocks':'symbol' in a?'etfs':'mutual-funds')),
+    color:a.color
+  })).filter(x=>x.value>0)
 
-  // ── Derived stats ──
-  const totalInvested = calcTotalInvested(data.payments)
-  const totalMonthly = [...data.funds, ...data.etfs].reduce((s, asset) => s + ('sipAmount' in asset ? asset.sipAmount : 0), 0)
-  const totalStockValue = data.stocks.reduce((s, stock) => s + (stock.quantity * stock.buyPrice), 0)
-  const uniqueMonths = [...new Set(data.payments.map((p) => p.date))].length
-
-  // Get investments for current asset type
-  const getCurrentInvestments = () => {
-    switch (mainTab) {
-      case 'mutual-funds': return data.payments.filter(p => p.assetType === 'mutual-funds');
-      case 'etfs': return data.payments.filter(p => p.assetType === 'etfs');
-      case 'stocks': return data.payments.filter(p => p.assetType === 'stocks');
-      default: return [];
-    }
-  }
-
-  // Get assets for current tab
-  const getCurrentAssets = () => {
-    switch (mainTab) {
-      case 'mutual-funds': return data.funds;
-      case 'etfs': return data.etfs;
-      case 'stocks': return data.stocks;
-      default: return [];
-    }
-  }
-
-  // Pie chart data for dashboard
-  const pieData = [
-    ...data.funds.map((f) => ({
-      name: f.name,
-      value: calcTotalInvested(data.payments, f.id, 'mutual-funds'),
-      color: f.color,
-      type: 'Mutual Fund'
-    })),
-    ...data.etfs.map((e) => ({
-      name: e.name,
-      value: calcTotalInvested(data.payments, e.id, 'etfs'),
-      color: e.color,
-      type: 'ETF'
-    })),
-    ...data.stocks.map((s) => ({
-      name: s.name,
-      value: calcTotalInvested(data.payments, s.id, 'stocks'),
-      color: s.color,
-      type: 'Stock'
-    }))
-  ].filter((x) => x.value > 0)
-
-  // Timeline data for dashboard
-  const allMonths = [...new Set(data.payments.map((p) => p.date))].sort()
-  const timelineData = allMonths.map((m) => {
-    const row: any = { month: getMonthLabel(m) }
-    const monthPayments = data.payments.filter((p) => p.date === m)
-    row.mutualFunds = monthPayments.filter(p => p.assetType === 'mutual-funds').reduce((s, p) => s + p.amount, 0)
-    row.etfs = monthPayments.filter(p => p.assetType === 'etfs').reduce((s, p) => s + p.amount, 0)
-    row.stocks = monthPayments.filter(p => p.assetType === 'stocks').reduce((s, p) => s + p.amount, 0)
-    row.total = monthPayments.reduce((s, p) => s + p.amount, 0)
-    return row
+  const allMonths=[...new Set(data.payments.map(p=>p.date))].sort()
+  const timelineData=allMonths.map(m=>{
+    const mp=data.payments.filter(p=>p.date===m)
+    return {month:getMonthLabel(m),mutualFunds:mp.filter(p=>p.assetType==='mutual-funds').reduce((s,p)=>s+p.amount,0),etfs:mp.filter(p=>p.assetType==='etfs').reduce((s,p)=>s+p.amount,0),stocks:mp.filter(p=>p.assetType==='stocks').reduce((s,p)=>s+p.amount,0)}
   })
 
-  // Function to check if data exists
-  const hasData = data.funds.length > 0 || data.etfs.length > 0 || data.stocks.length > 0
+  if(!isClient) return <div className="min-h-screen bg-[#F5F0E8] flex items-center justify-center"><div className="text-[#8A8070]">Loading...</div></div>
 
   // ── Landing ──
-  // Show loading state while checking localStorage on client
-  if (!isClient) {
+  if(!loaded) {
+    const hasSaved=localStorage.getItem(STORAGE_KEY)
     return (
-      <div className="min-h-screen bg-paper flex flex-col items-center justify-center p-6">
-        <div className="max-w-lg w-full text-center">
-          <div className="w-16 h-16 rounded-2xl bg-emerald flex items-center justify-center mx-auto mb-6 animate-pulse">
-            <Logo size={44} />
+      <div className="min-h-screen bg-[#F5F0E8] flex flex-col items-center justify-center p-6">
+        <div className="max-w-sm w-full text-center">
+          <div className="w-14 h-14 rounded-2xl bg-[#1A5C3A] flex items-center justify-center mx-auto mb-5">
+            <TrendingUp size={26} className="text-[#FDF8F0]"/>
           </div>
-          <div className="h-8 bg-gray-200 rounded w-3/4 mx-auto mb-3 animate-pulse"></div>
-          <div className="h-4 bg-gray-200 rounded w-full mx-auto mb-2 animate-pulse"></div>
-          <div className="h-4 bg-gray-200 rounded w-2/3 mx-auto mb-10 animate-pulse"></div>
+          <h1 className="text-3xl font-bold text-[#0D0D0D] mb-2">Investment Tracker</h1>
+          <p className="text-[#8A8070] text-sm mb-8">Track Mutual Funds, ETFs & Stocks. Data saved in your browser.</p>
+          {hasSaved&&<button className="btn-primary w-full mb-4" onClick={()=>setLoaded(true)}><RefreshCw size={14} className="inline mr-2"/>Continue with Saved Data</button>}
+          <div className="bg-[#FDF8F0] rounded-2xl border border-[#C9A84C]/20 p-5 mb-4">
+            <p className="text-sm font-medium text-[#0D0D0D] mb-3">Load from Excel</p>
+            <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleUpload}/>
+            <button className="btn-gold w-full" onClick={()=>fileRef.current?.click()}><Upload size={14} className="inline mr-2"/>Upload Excel File</button>
+          </div>
+          <div className="relative my-3"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[#C9A84C]/20"/></div><span className="relative bg-[#F5F0E8] px-3 text-xs text-[#8A8070]">or</span></div>
+          <button className="btn-outline w-full" onClick={startFresh}><Plus size={14} className="inline mr-2"/>Start Fresh</button>
         </div>
       </div>
     )
   }
 
-  // Only render the actual content on client
-  if (!loaded) {
-    const hasSavedData = localStorage.getItem(STORAGE_KEY)
-
-    return (
-      <div className="min-h-screen bg-paper flex flex-col items-center justify-center p-6">
-        <div className="max-w-lg w-full text-center">
-          <div className="w-16 h-16 rounded-2xl bg-emerald flex items-center justify-center mx-auto mb-6">
-            <TrendingUp size={28} className="text-cream" />
-          </div>
-          <h1 className="text-4xl font-bold text-ink mb-3">Investment Tracker</h1>
-          <p className="text-muted text-base mb-2">Track Mutual Funds, ETFs & Stocks in one place.</p>
-          <p className="text-muted text-sm mb-10">
-            All data lives in your <span className="text-gold-dark font-medium">browser's localStorage</span> — no accounts, no servers, no cookies.
-          </p>
-
-          {/* Show Continue button if data exists in localStorage */}
-          {hasSavedData && (
-            <button className="btn-primary w-full mb-4" onClick={() => setLoaded(true)}>
-              <RefreshCw size={14} className="inline mr-2" />Continue with Saved Data
-            </button>
-          )}
-
-          <div className="card p-6 mb-4 text-left">
-            <div className="flex items-start gap-3 mb-4">
-              <FileSpreadsheet size={20} className="text-gold mt-0.5 shrink-0" />
-              <div>
-                <p className="font-medium text-sm text-ink">Load from Excel file</p>
-                <p className="text-xs text-muted mt-0.5">Upload your previously saved <code className="bg-paper px-1 rounded text-gold-dark">investment-tracker.xlsx</code></p>
-              </div>
-            </div>
-            <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleUpload} />
-            <button className="btn-gold w-full" onClick={() => fileRef.current?.click()}>
-              <Upload size={14} className="inline mr-2" />Upload Excel File
-            </button>
-          </div>
-
-          <div className="relative my-4">
-            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gold/20" /></div>
-            <div className="relative text-center"><span className="bg-paper px-3 text-xs text-muted">or</span></div>
-          </div>
-
-          <button className="btn-outline w-full" onClick={startFresh}>
-            <Plus size={14} className="inline mr-2" />Start Fresh
-          </button>
-
-          <div className="mt-8 flex items-start gap-2 text-xs text-muted bg-cream rounded-xl p-3 text-left">
-            <Info size={14} className="shrink-0 mt-0.5 text-gold" />
-            <span>Data is automatically saved to your browser. Always download a backup Excel file for safekeeping.</span>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  const currentInvestments = getCurrentInvestments()
-  const currentAssets = getCurrentAssets()
+  const currentAssets=getCurrentAssets()
+  const currentPayments=getCurrentPayments()
+  const isMFTab=mainTab==='mutual-funds'
+  const isETFTab=mainTab==='etfs'
+  const isStockTab=mainTab==='stocks'
 
   return (
-    <div className="min-h-screen bg-paper">
-      {/* Header */}
-      <header className="bg-cream border-b border-gold/15 sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-1">
-            <div className="w-8 h-8 rounded-xl bg-emerald flex items-center justify-center">
-              <Logo />
+    <div className="min-h-screen bg-[#F5F0E8]">
+      <style>{`
+        .inp{width:100%;background:#F5F0E8;border:1px solid rgba(201,168,76,0.3);border-radius:12px;padding:10px 14px;font-size:14px;color:#0D0D0D;outline:none;transition:all 0.15s;}
+        .inp:focus{border-color:#C9A84C;box-shadow:0 0 0 3px rgba(201,168,76,0.12);}
+        .inp option{background:#FDF8F0;}
+        .btn-primary{background:#1A5C3A;color:#FDF8F0;font-weight:500;padding:9px 18px;border-radius:12px;font-size:14px;transition:all 0.2s;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
+        .btn-primary:hover{background:#15492e;}
+        .btn-gold{background:#C9A84C;color:#0D0D0D;font-weight:500;padding:9px 18px;border-radius:12px;font-size:14px;transition:all 0.2s;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
+        .btn-gold:hover{background:#b8973e;}
+        .btn-outline{background:transparent;color:#0D0D0D;font-weight:500;padding:9px 18px;border-radius:12px;font-size:14px;transition:all 0.2s;border:1px solid rgba(201,168,76,0.4);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
+        .btn-outline:hover{background:rgba(201,168,76,0.08);}
+        .card{background:#FDF8F0;border:1px solid rgba(201,168,76,0.2);border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,0.04);}
+        select.inp{-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238A8070' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;}
+        .scrollbar-thin::-webkit-scrollbar{width:4px;height:4px;}
+        .scrollbar-thin::-webkit-scrollbar-thumb{background:rgba(201,168,76,0.4);border-radius:99px;}
+      `}</style>
+
+      {/* ── Header ── */}
+      <header className="bg-[#FDF8F0] border-b border-[#C9A84C]/15 sticky top-0 z-30">
+        <div className="max-w-6xl mx-auto px-3 sm:px-4 py-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="w-8 h-8 rounded-xl bg-[#1A5C3A] flex items-center justify-center">
+              <TrendingUp size={16} className="text-[#FDF8F0]"/>
             </div>
-            <span className="font-bold text-ink text-base leading-none">TrackMyFund</span>
+            <span className="font-bold text-[#0D0D0D] text-sm sm:block">TrackMyFund</span>
           </div>
-          <div className="flex items-center gap-2">
-            <button className="btn-outline text-xs py-2 px-3 min-w-fit" onClick={() => fileRef.current?.click()}>
-              <Upload size={13} className="inline mr-1.5" />Load
-            </button>
-            <button className="btn-gold text-xs py-2 px-3 min-w-fit" onClick={handleExport}>
-              <Download size={13} className="inline mr-1.5" />Save Excel
-            </button>
-            <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleUpload} />
+
+          {/* Global Search Bar */}
+          {/* <button
+            className="flex-1 max-w-xs flex items-center gap-2 bg-[#F5F0E8] border border-[#C9A84C]/20 rounded-xl px-3 py-2 text-sm text-[#8A8070] hover:border-[#C9A84C] transition-all"
+            onClick={()=>setShowGlobalSearch(true)}>
+            <Search size={13}/>
+            <span className="hidden sm:block">Search funds, months...</span>
+            <span className="sm:hidden">Search...</span>
+            <span className="ml-auto text-xs hidden sm:block opacity-60">⌘K</span>
+          </button> */}
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleUpload}/>
+            <button className="btn-outline text-xs py-2 px-2.5" onClick={()=>fileRef.current?.click()}><Upload size={13}/><span className="hidden sm:inline">Load</span></button>
+            <button className="btn-gold text-xs py-2 px-2.5" onClick={()=>exportExcel(data)}><Download size={13}/><span className="hidden sm:inline">Export</span></button>
           </div>
         </div>
+
         {/* Main Tabs */}
-        <div className="max-w-6xl mx-auto px-4 flex gap-1 pb-0 overflow-auto">
-          {([
-            ['dashboard', 'Dashboard', BarChart3],
-            ['mutual-funds', 'Mutual Funds', Wallet],
-            ['etfs', 'ETFs', BarChart2],
-            ['stocks', 'Stocks', Activity]
-          ] as const).map(([id, label, Icon]) => (
-            <button key={id} onClick={() => { setMainTab(id); setSubTab('list') }}
-              className={`flex items-center min-w-fit gap-1.5 px-2 py-2.5 text-sm font-medium border-b-2 transition-all -mb-px ${mainTab === id ? 'border-gold text-gold-dark' : 'border-transparent text-muted hover:text-ink'}`}>
-              <Icon size={14} />{label}
+        <div className="max-w-6xl mx-auto px-3 sm:px-4 flex overflow-x-auto overflow-y-hidden">
+          {[['dashboard','Dashboard',BarChart3],['mutual-funds','Mutual Funds',Wallet],['etfs','ETFs',BarChart2],['stocks','Stocks',Activity]].map(([id,label,Icon])=>(
+            <button key={id} onClick={()=>{setMainTab(id);setSubTab('list');setListSearch('');setHistSearch('')}}
+              className={`flex items-center gap-1.5 px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-all shrink-0 -mb-px whitespace-nowrap ${mainTab===id?'border-[#C9A84C] text-[#8B6914]':'border-transparent text-[#8A8070] hover:text-[#0D0D0D]'}`}>
+              <Icon size={13}/>{label}
             </button>
           ))}
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-6">
+      <main className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
 
         {/* ── DASHBOARD ── */}
-        {mainTab === 'dashboard' && (
-          <div className="space-y-6">
-            {/* Stats row */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {mainTab==='dashboard' && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-3">
               {[
-                { label: 'Total Invested', value: `₹${totalInvested.toLocaleString('en-IN')}`, sub: 'all time', icon: Wallet, color: 'text-emerald' },
-                { label: 'Monthly SIP', value: `₹${totalMonthly.toLocaleString('en-IN')}`, sub: 'per month', icon: Calendar, color: 'text-gold-dark' },
-                { label: 'Stock Value', value: `₹${totalStockValue.toLocaleString('en-IN')}`, sub: 'lump sum', icon: TrendingUp, color: 'text-blue-600' },
-                { label: 'Active Assets', value: (data.funds.length + data.etfs.length + data.stocks.length).toString(), sub: 'total holdings', icon: TrendingUp, color: 'text-ink' },
-                { label: 'Months Tracked', value: uniqueMonths.toString(), sub: 'investments logged', icon: BarChart3, color: 'text-ink' },
-              ].map((s) => (
-                <div key={s.label} className="stat-card">
-                  <span className="text-xs text-muted uppercase tracking-wide">{s.label}</span>
-                  <span className={` font-bold text-2xl ${s.color}`}>{s.value}</span>
-                  <span className="text-xs text-muted">{s.sub}</span>
+                {l:'Total Invested',v:`₹${totalInvested.toLocaleString('en-IN')}`,c:'text-[#1A5C3A]'},
+                {l:'Monthly SIP',v:`₹${totalMonthly.toLocaleString('en-IN')}`,c:'text-[#8B6914]'},
+                {l:'Stock Value',v:`₹${totalStockValue.toLocaleString('en-IN')}`,c:'text-[#1565C0]'},
+                {l:'Active Assets',v:(data.funds.length+data.etfs.length+data.stocks.length).toString(),c:'text-[#0D0D0D]'},
+                {l:'Months Tracked',v:[...new Set(data.payments.map(p=>p.date))].length.toString(),c:'text-[#0D0D0D]'},
+              ].map(s=>(
+                <div key={s.l} className="card p-3 sm:p-4 flex flex-col gap-0.5">
+                  <span className="text-xs text-[#8A8070]">{s.l}</span>
+                  <span className={`font-bold text-lg sm:text-xl ${s.c}`}>{s.v}</span>
                 </div>
               ))}
             </div>
 
-            {data.funds.length === 0 && data.etfs.length === 0 && data.stocks.length === 0 ? (
-              <div className="card p-12 text-center">
-                <TrendingUp size={40} className="text-gold/40 mx-auto mb-4" />
-                <p className=" text-lg text-ink mb-1">No investments yet</p>
-                <p className="text-sm text-muted mb-5">Add mutual funds, ETFs or stocks to get started</p>
-                <div className="flex gap-3 justify-center">
-                  <button className="btn-outline min-w-fit text-xs" onClick={() => setMainTab('mutual-funds')}>Add Fund</button>
-                  <button className="btn-outline min-w-fit text-xs" onClick={() => setMainTab('etfs')}>Add ETF</button>
-                  <button className="btn-outline min-w-fit text-xs" onClick={() => setMainTab('stocks')}>Add Stock</button>
+            {data.funds.length===0&&data.etfs.length===0&&data.stocks.length===0 ? (
+              <div className="card p-10 text-center">
+                <TrendingUp size={36} className="text-[#C9A84C]/40 mx-auto mb-3"/>
+                <p className="font-medium text-[#0D0D0D] mb-1">No investments yet</p>
+                <p className="text-sm text-[#8A8070] mb-5">Add mutual funds, ETFs or stocks to get started</p>
+                <div className="flex gap-2 justify-center flex-wrap">
+                  {['mutual-funds','etfs','stocks'].map(t=><button key={t} className="btn-outline text-xs" onClick={()=>setMainTab(t)}>Add {t==='mutual-funds'?'Fund':t==='etfs'?'ETF':'Stock'}</button>)}
                 </div>
               </div>
             ) : (
-              <div className="grid md:grid-cols-2 gap-5">
-                {/* Allocation pie */}
-                <div className="card p-5">
-                  <h3 className=" font-semibold text-ink mb-4">Portfolio Allocation</h3>
-                  {pieData.length === 0 ? <p className="text-sm text-muted text-center py-8">Log investments to see allocation</p> : (
-                    <ResponsiveContainer width="100%" height={220}>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="card p-4 sm:p-5">
+                  <h3 className="font-semibold text-[#0D0D0D] mb-4">Portfolio Allocation</h3>
+                  {pieData.length===0?<p className="text-sm text-[#8A8070] text-center py-8">Log investments to see allocation</p>:(
+                    <ResponsiveContainer width="100%" height={200}>
                       <PieChart>
-                        <Pie data={pieData} cx="50%" cy="50%" outerRadius={80} dataKey="value"
-                          label={({ name, percent }) => `${name.split(' ').slice(-1)[0]} ${(percent * 100).toFixed(0)}%`}
-                          labelLine={false}>
-                          {pieData.map((e, i) => <Cell key={i} fill={e.color} />)}
+                        <Pie data={pieData} cx="50%" cy="50%" outerRadius={75} dataKey="value"
+                          label={({name,percent})=>`${name.split(' ').pop()} ${(percent*100).toFixed(0)}%`} labelLine={false}>
+                          {pieData.map((e,i)=><Cell key={i} fill={e.color}/>)}
                         </Pie>
-                        <Tooltip formatter={(v: any) => [`₹${Number(v).toLocaleString('en-IN')}`, 'Invested']}
-                          contentStyle={{ background: '#FDF8F0', border: '1px solid #C9A84C33', borderRadius: 12 }} />
+                        <Tooltip formatter={v=>[`₹${Number(v).toLocaleString('en-IN')}`,'Invested']} contentStyle={{background:'#FDF8F0',border:'1px solid #C9A84C33',borderRadius:12}}/>
                       </PieChart>
                     </ResponsiveContainer>
                   )}
                 </div>
-
-                {/* Monthly bar chart */}
-                <div className="card p-5">
-                  <h3 className=" font-semibold text-ink mb-4">Monthly Investment by Type</h3>
-                  {timelineData.length === 0 ? <p className="text-sm text-muted text-center py-8">Log investments to see timeline</p> : (
-                    <ResponsiveContainer width="100%" height={220}>
+                <div className="card p-4 sm:p-5">
+                  <h3 className="font-semibold text-[#0D0D0D] mb-4">Monthly by Type</h3>
+                  {timelineData.length===0?<p className="text-sm text-[#8A8070] text-center py-8">Log investments to see chart</p>:(
+                    <ResponsiveContainer width="100%" height={200}>
                       <BarChart data={timelineData.slice(-12)}>
-                        <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#8A8070' }} />
-                        <YAxis tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 10, fill: '#8A8070' }} />
-                        <Tooltip formatter={(v: any) => [`₹${Number(v).toLocaleString('en-IN')}`, '']}
-                          contentStyle={{ background: '#FDF8F0', border: '1px solid #C9A84C33', borderRadius: 12 }} />
-                        <Bar dataKey="mutualFunds" stackId="a" fill="#C9A84C" name="Mutual Funds" />
-                        <Bar dataKey="etfs" stackId="a" fill="#1A5C3A" name="ETFs" />
-                        <Bar dataKey="stocks" stackId="a" fill="#1565C0" name="Stocks" />
+                        <XAxis dataKey="month" tick={{fontSize:10,fill:'#8A8070'}}/>
+                        <YAxis tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`} tick={{fontSize:10,fill:'#8A8070'}}/>
+                        <Tooltip formatter={v=>[`₹${Number(v).toLocaleString('en-IN')}`,'']} contentStyle={{background:'#FDF8F0',border:'1px solid #C9A84C33',borderRadius:12}}/>
+                        <Bar dataKey="mutualFunds" stackId="a" fill="#C9A84C" name="Mutual Funds"/>
+                        <Bar dataKey="etfs" stackId="a" fill="#1A5C3A" name="ETFs"/>
+                        <Bar dataKey="stocks" stackId="a" fill="#1565C0" name="Stocks"/>
                       </BarChart>
                     </ResponsiveContainer>
                   )}
@@ -922,48 +723,34 @@ export default function Home() {
               </div>
             )}
 
-            {/* Asset summary cards */}
-            {[...data.funds, ...data.etfs, ...data.stocks].length > 0 && (
+            {[...data.funds,...data.etfs,...data.stocks].length>0&&(
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className=" font-semibold text-ink">Asset Overview</h3>
-                  <button className="btn-outline text-xs py-2 px-3" onClick={() => setShowProjection(true)}>
-                    <TrendingUp size={13} className="inline mr-1.5" />Projection
-                  </button>
+                  <h3 className="font-semibold text-[#0D0D0D]">Asset Overview</h3>
+                  <button className="btn-outline text-xs py-2 px-3" onClick={()=>setShowProjection(true)}><TrendingUp size={13}/>Projection</button>
                 </div>
-                <div className="grid md:grid-cols-2 gap-3">
-                  {[...data.funds, ...data.etfs, ...data.stocks].slice(0, 6).map((asset) => {
-                    const invested = calcTotalInvested(data.payments, asset.id, asset.assetType ||
-                      ('symbol' in asset && 'quantity' in asset ? 'stocks' :
-                        'symbol' in asset ? 'etfs' : 'mutual-funds') as AssetType)
-                    const monthlyAmt = 'sipAmount' in asset ? asset.sipAmount : 0
-                    const projected10y = calcFutureValue(monthlyAmt, 120, asset.expectedReturn)
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {[...data.funds,...data.etfs,...data.stocks].slice(0,6).map(asset=>{
+                    const at=asset.assetType||('quantity' in asset&&'symbol' in asset?'stocks':'symbol' in asset?'etfs':'mutual-funds')
+                    const invested=calcTotalInvested(data.payments,asset.id,at)
+                    const monthlyAmt='sipAmount' in asset?asset.sipAmount:0
+                    const p10y=calcFutureValue(monthlyAmt,120,asset.expectedReturn)
                     return (
-                      <div key={asset.id} className="card p-4 flex gap-4 items-start">
-                        <div className="w-3 h-full min-h-[60px] rounded-full shrink-0" style={{ background: asset.color }} />
+                      <div key={asset.id} className="card p-4 flex gap-3">
+                        <div className="w-1 rounded-full shrink-0 self-stretch" style={{background:asset.color}}/>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <p className="font-medium text-sm text-ink truncate">{asset.name}</p>
-                              <span className="text-xs text-muted">{asset.category} · {asset.expectedReturn}% CAGR</span>
+                          <div className="flex justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="font-medium text-sm text-[#0D0D0D] truncate">{asset.name}</p>
+                              <p className="text-xs text-[#8A8070]">{asset.category} · {asset.expectedReturn}% CAGR</p>
                             </div>
                             <div className="text-right shrink-0">
-                              <p className="text-xs text-muted">Invested</p>
-                              <p className=" font-semibold text-emerald">₹{invested.toLocaleString('en-IN')}</p>
+                              <p className="text-xs text-[#8A8070]">Invested</p>
+                              <p className="font-semibold text-[#1A5C3A] text-sm">₹{invested.toLocaleString('en-IN')}</p>
                             </div>
                           </div>
-                          {'sipAmount' in asset && (
-                            <div className="flex gap-4 mt-2 text-xs text-muted">
-                              <span>SIP: <strong className="text-ink">₹{asset.sipAmount.toLocaleString('en-IN')}/mo</strong></span>
-                              <span>10Y est: <strong className="text-gold-dark">₹{(projected10y / 100000).toFixed(1)}L</strong></span>
-                            </div>
-                          )}
-                          {'quantity' in asset && (
-                            <div className="flex gap-4 mt-2 text-xs text-muted">
-                              <span>Qty: <strong className="text-ink">{asset.quantity}</strong></span>
-                              <span>Avg Price: <strong className="text-ink">₹{asset.buyPrice.toLocaleString('en-IN')}</strong></span>
-                            </div>
-                          )}
+                          {'sipAmount' in asset&&<div className="flex gap-3 mt-2 text-xs text-[#8A8070]"><span>SIP: <strong className="text-[#0D0D0D]">₹{asset.sipAmount.toLocaleString('en-IN')}/mo</strong></span><span>10Y: <strong className="text-[#8B6914]">₹{(p10y/100000).toFixed(1)}L</strong></span></div>}
+                          {'quantity' in asset&&<div className="flex gap-3 mt-2 text-xs text-[#8A8070]"><span>Qty: <strong className="text-[#0D0D0D]">{asset.quantity}</strong></span><span>Avg: <strong className="text-[#0D0D0D]">₹{asset.buyPrice.toLocaleString('en-IN')}</strong></span></div>}
                         </div>
                       </div>
                     )
@@ -971,282 +758,312 @@ export default function Home() {
                 </div>
               </div>
             )}
-
-            <div className="card p-4 flex items-center gap-3 bg-emerald/5 border-emerald/20">
-              <Info size={16} className="text-emerald shrink-0" />
-              <p className="text-xs text-muted">
-                Data is automatically saved to your browser. Remember to <button className="text-gold-dark font-medium underline underline-offset-2" onClick={handleExport}>download your Excel file</button> as a backup.
-              </p>
-            </div>
           </div>
         )}
 
-        {/* ── ASSET MANAGEMENT (Mutual Funds, ETFs, Stocks) ── */}
-        {mainTab !== 'dashboard' && (
+        {/* ── ASSET MANAGEMENT ── */}
+        {mainTab!=='dashboard'&&(
           <div className="space-y-4">
-            {/* Sub tabs */}
-            <div className="flex items-center justify-between">
-              <div className="flex gap-2 border-b border-gold/20">
-                <button
-                  onClick={() => setSubTab('list')}
-                  className={`px-4 py-2 text-sm font-medium transition-all ${subTab === 'list' ? 'text-gold-dark border-b-2 border-gold' : 'text-muted hover:text-ink'}`}
-                >
-                  Assets List
-                </button>
-                <button
-                  onClick={() => setSubTab('investments')}
-                  className={`px-4 py-2 text-sm font-medium transition-all ${subTab === 'investments' ? 'text-gold-dark border-b-2 border-gold' : 'text-muted hover:text-ink'}`}
-                >
-                  Investment History
+            {/* Sub-tab bar + Add button */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex border-b border-[#C9A84C]/20">
+                {[['list','Assets'],['investments','History']].map(([id,label])=>(
+                  <button key={id} onClick={()=>{setSubTab(id);setListSearch('');setHistSearch('')}}
+                    className={`px-3 sm:px-4 py-2 text-sm font-medium transition-all whitespace-nowrap ${subTab===id?'text-[#8B6914] border-b-2 border-[#C9A84C]':'text-[#8A8070] hover:text-[#0D0D0D]'}`}>
+                    {label}
+                    {id==='investments'&&currentPayments.length>0&&<span className="ml-1.5 text-xs bg-[#1A5C3A]/10 text-[#1A5C3A] px-1.5 py-0.5 rounded-full">{currentPayments.length}</span>}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                {subTab==='investments'&&currentAssets.length>0&&(
+                  <button className="btn-primary text-xs py-2 px-3" onClick={()=>openInvest(mainTab)}>
+                    <Plus size={13}/>Log
+                  </button>
+                )}
+                <button className="btn-primary text-xs py-2 px-3" onClick={()=>{if(isMFTab)setShowFundModal(true);else if(isETFTab)setShowETFModal(true);else setShowStockModal(true)}}>
+                  <Plus size={13}/>Add {isMFTab?'Fund':isETFTab?'ETF':'Stock'}
                 </button>
               </div>
-              <button
-                className="btn-primary min-w-fit bg-emerald text-white"
-                onClick={() => {
-                  if (mainTab === 'mutual-funds') setShowFundModal(true)
-                  else if (mainTab === 'etfs') setShowETFModal(true)
-                  else setShowStockModal(true)
-                }}
-              >
-                <Plus size={14} className="inline mr-1.5" />
-                Add {mainTab === 'mutual-funds' ? 'Fund' : mainTab === 'etfs' ? 'ETF' : 'Stock'}
-              </button>
             </div>
 
-            {/* Assets List View */}
-            {subTab === 'list' && (
-              <>
-                {currentAssets.length === 0 ? (
-                  <div className="card p-12 text-center">
-                    <Wallet size={40} className="text-gold/40 mx-auto mb-4" />
-                    <p className=" text-lg text-ink mb-1">No {mainTab === 'mutual-funds' ? 'funds' : mainTab === 'etfs' ? 'ETFs' : 'stocks'} added yet</p>
-                    <p className="text-sm text-muted mb-5">Add your first {mainTab === 'mutual-funds' ? 'mutual fund' : mainTab === 'etfs' ? 'ETF' : 'stock'} to start tracking</p>
-                    <button className="btn-primary bg-emerald text-white" onClick={() => {
-                      if (mainTab === 'mutual-funds') setShowFundModal(true)
-                      else if (mainTab === 'etfs') setShowETFModal(true)
-                      else setShowStockModal(true)
-                    }}>
-                      Add First {mainTab === 'mutual-funds' ? 'Fund' : mainTab === 'etfs' ? 'ETF' : 'Stock'}
+            {/* ── ASSETS LIST ── */}
+            {subTab==='list'&&(
+              <div className="space-y-3">
+                {currentAssets.length>0&&(
+                  <SearchBar value={listSearch} onChange={setListSearch} placeholder={`Search ${isMFTab?'funds':isETFTab?'ETFs':'stocks'} by name, category...`}/>
+                )}
+                {currentAssets.length===0 ? (
+                  <div className="card p-10 text-center">
+                    <Wallet size={36} className="text-[#C9A84C]/40 mx-auto mb-3"/>
+                    <p className="font-medium text-[#0D0D0D] mb-1">No {isMFTab?'funds':isETFTab?'ETFs':'stocks'} added</p>
+                    <p className="text-sm text-[#8A8070] mb-4">Add your first to start tracking</p>
+                    <button className="btn-primary mx-auto" onClick={()=>{if(isMFTab)setShowFundModal(true);else if(isETFTab)setShowETFModal(true);else setShowStockModal(true)}}>
+                      <Plus size={14}/>Add First {isMFTab?'Fund':isETFTab?'ETF':'Stock'}
                     </button>
                   </div>
+                ) : filteredAssets.length===0 ? (
+                  <div className="card p-8 text-center">
+                    <Search size={28} className="text-[#C9A84C]/40 mx-auto mb-2"/>
+                    <p className="text-sm text-[#8A8070]">No results for "{listSearch}"</p>
+                  </div>
                 ) : (
-                  <div className="space-y-3">
-                    {currentAssets.map((asset) => {
-                      const invested = calcTotalInvested(data.payments, asset.id, mainTab)
-                      const investments = data.payments.filter((p) => p.assetId === asset.id && p.assetType === mainTab)
-                      const monthlyAmt = 'sipAmount' in asset ? asset.sipAmount : 0
-                      return (
-                        <div key={asset.id} className="card p-5">
-                          <div className="flex items-start gap-4">
-                            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: asset.color + '22' }}>
-                              <TrendingUp size={18} style={{ color: asset.color }} />
+                  filteredAssets.map(asset=>{
+                    const invested=calcTotalInvested(data.payments,asset.id,mainTab)
+                    const investments=data.payments.filter(p=>p.assetId===asset.id&&p.assetType===mainTab)
+                    // NAV/units stats for MF
+                    const lastPayment=investments.sort((a,b)=>b.date.localeCompare(a.date))[0]
+                    const totalUnits=investments.reduce((s,p)=>s+(p.units||0),0)
+                    const lastNav=lastPayment?.nav
+                    const lastPrice=lastPayment?.price
+                    const totalQty=investments.reduce((s,p)=>s+(p.quantity||0),0)
+
+                    return (
+                      <div key={asset.id} className="card p-4 sm:p-5">
+                        <div className="flex items-start gap-3">
+                          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{background:asset.color+'22'}}>
+                            <TrendingUp size={16} style={{color:asset.color}}/>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <h3 className="font-semibold text-[#0D0D0D] text-sm sm:text-base truncate">{asset.name}</h3>
+                                {'symbol' in asset&&<p className="text-xs text-[#8A8070]">{asset.symbol}</p>}
+                                <p className="text-xs text-[#8A8070] mt-0.5">{asset.category} · Since {asset.startDate} · {asset.expectedReturn}% CAGR</p>
+                              </div>
+                              <div className="flex gap-1 shrink-0">
+                                <button onClick={()=>openInvest(mainTab,asset.id)} className="p-1.5 text-[#1A5C3A] hover:bg-[#1A5C3A]/10 rounded-lg transition-all" title="Log Investment"><Plus size={14}/></button>
+                                <button onClick={()=>{if(isMFTab){setEditFund(asset);setShowFundModal(true)}else if(isETFTab){setEditETF(asset);setShowETFModal(true)}else{setEditStock(asset);setShowStockModal(true)}}} className="p-1.5 text-[#8A8070] hover:text-[#0D0D0D] rounded-lg hover:bg-[#F5F0E8] transition-all"><Edit3 size={14}/></button>
+                                <button onClick={()=>{if(isMFTab)deleteFund(asset.id);else if(isETFTab)deleteETF(asset.id);else deleteStock(asset.id)}} className="p-1.5 text-[#8A8070] hover:text-red-500 rounded-lg hover:bg-[#F5F0E8] transition-all"><Trash2 size={14}/></button>
+                              </div>
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <h3 className="font-semibold text-ink">{asset.name}</h3>
-                                  {'symbol' in asset && <p className="text-xs text-muted mt-0.5">Symbol: {asset.symbol}</p>}
-                                  <p className="text-xs text-muted mt-0.5">{asset.category} · Since {asset.startDate} · {asset.expectedReturn}% expected CAGR</p>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+                              {'sipAmount' in asset&&(
+                                <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                                  <p className="text-xs text-[#8A8070]">Monthly SIP</p>
+                                  <p className="font-bold text-[#1A5C3A] text-sm">₹{asset.sipAmount.toLocaleString('en-IN')}</p>
                                 </div>
-                                <div className="flex gap-1 shrink-0">
-                                  <button
-                                    onClick={() => {
-                                      setInvestmentAssetType(mainTab)
-                                      setEditPayment(undefined)
-                                      setShowInvestmentModal(true)
-                                    }}
-                                    className="p-2 text-emerald hover:text-emerald-dark rounded-lg hover:bg-paper transition-all"
-                                    title="Add Investment"
-                                  >
-                                    <Plus size={14} />
-                                  </button>
-                                  <button onClick={() => {
-                                    if (mainTab === 'mutual-funds') { setEditFund(asset as Fund); setShowFundModal(true) }
-                                    else if (mainTab === 'etfs') { setEditETF(asset as ETF); setShowETFModal(true) }
-                                    else { setEditStock(asset as Stock); setShowStockModal(true) }
-                                  }} className="p-2 text-muted hover:text-ink rounded-lg hover:bg-paper transition-all">
-                                    <Edit3 size={14} />
-                                  </button>
-                                  <button onClick={() => {
-                                    if (mainTab === 'mutual-funds') deleteFund(asset.id)
-                                    else if (mainTab === 'etfs') deleteETF(asset.id)
-                                    else deleteStock(asset.id)
-                                  }} className="p-2 text-muted hover:text-red-500 rounded-lg hover:bg-paper transition-all">
-                                    <Trash2 size={14} />
-                                  </button>
-                                </div>
+                              )}
+                              <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                                <p className="text-xs text-[#8A8070]">Total Invested</p>
+                                <p className="font-bold text-[#0D0D0D] text-sm">₹{invested.toLocaleString('en-IN')}</p>
                               </div>
-                              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-3">
-                                {'sipAmount' in asset && (
-                                  <div className="bg-paper rounded-xl p-3">
-                                    <p className="text-xs text-muted">Monthly SIP</p>
-                                    <p className=" font-bold text-emerald">₹{asset.sipAmount.toLocaleString('en-IN')}</p>
-                                  </div>
-                                )}
-                                {'quantity' in asset && (
-                                  <div className="bg-paper rounded-xl p-3">
-                                    <p className="text-xs text-muted">Quantity</p>
-                                    <p className=" font-bold text-ink">{asset.quantity}</p>
-                                  </div>
-                                )}
-                                {'quantity' in asset && (
-                                  <div className="bg-paper rounded-xl p-3">
-                                    <p className="text-xs text-muted">Buy Price</p>
-                                    <p className=" font-bold text-ink">₹{asset.buyPrice.toLocaleString('en-IN')}</p>
-                                  </div>
-                                )}
-                                <div className="bg-paper rounded-xl p-3">
-                                  <p className="text-xs text-muted">Total Invested</p>
-                                  <p className=" font-bold text-ink">₹{invested.toLocaleString('en-IN')}</p>
-                                </div>
-                                <div className="bg-paper rounded-xl p-3">
-                                  <p className="text-xs text-muted">Investments</p>
-                                  <p className=" font-bold text-ink">{investments.length} entries</p>
-                                </div>
+                              <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                                <p className="text-xs text-[#8A8070]">Entries</p>
+                                <p className="font-bold text-[#0D0D0D] text-sm">{investments.length}</p>
                               </div>
+
+                              {/* MF: NAV + Total Units */}
+                              {isMFTab&&lastNav&&(
+                                <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                                  <p className="text-xs text-[#8A8070]">Last NAV</p>
+                                  <p className="font-bold text-[#8B6914] text-sm">₹{lastNav.toFixed(3)}</p>
+                                </div>
+                              )}
+                              {isMFTab&&totalUnits>0&&(
+                                <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                                  <p className="text-xs text-[#8A8070]">Total Units</p>
+                                  <p className="font-bold text-[#4A148C] text-sm">{totalUnits.toFixed(3)}</p>
+                                </div>
+                              )}
+
+                              {/* ETF: Market Price + Total Units */}
+                              {isETFTab&&lastPrice&&(
+                                <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                                  <p className="text-xs text-[#8A8070]">Last Price</p>
+                                  <p className="font-bold text-[#8B6914] text-sm">₹{lastPrice.toFixed(2)}</p>
+                                </div>
+                              )}
+                              {isETFTab&&totalQty>0&&(
+                                <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                                  <p className="text-xs text-[#8A8070]">Total Units</p>
+                                  <p className="font-bold text-[#4A148C] text-sm">{totalQty}</p>
+                                </div>
+                              )}
+
+                              {/* Stock: Qty + Avg Price */}
+                              {'quantity' in asset&&(
+                                <>
+                                  <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                                    <p className="text-xs text-[#8A8070]">Quantity</p>
+                                    <p className="font-bold text-[#0D0D0D] text-sm">{totalQty>0?totalQty:asset.quantity}</p>
+                                  </div>
+                                  <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                                    <p className="text-xs text-[#8A8070]">Avg Buy Price</p>
+                                    <p className="font-bold text-[#8B6914] text-sm">₹{asset.buyPrice.toLocaleString('en-IN')}</p>
+                                  </div>
+                                  {lastPrice&&(
+                                    <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                                      <p className="text-xs text-[#8A8070]">Last Price</p>
+                                      <p className="font-bold text-[#1565C0] text-sm">₹{lastPrice.toLocaleString('en-IN')}</p>
+                                    </div>
+                                  )}
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
-                      )
-                    })}
-                  </div>
+                      </div>
+                    )
+                  })
                 )}
-              </>
+              </div>
             )}
 
-            {/* Investment History View */}
-            {subTab === 'investments' && (
-              <>
-                {currentAssets.length === 0 ? (
-                  <div className="card p-12 text-center">
-                    <Calendar size={40} className="text-gold/40 mx-auto mb-4" />
-                    <p className=" text-lg text-ink mb-1">No assets added yet</p>
-                    <p className="text-sm text-muted mb-5">Add assets before logging investments</p>
-                    <button className="btn-primary" onClick={() => {
-                      if (mainTab === 'mutual-funds') setShowFundModal(true)
-                      else if (mainTab === 'etfs') setShowETFModal(true)
-                      else setShowStockModal(true)
-                    }}>
-                      Add First {mainTab === 'mutual-funds' ? 'Fund' : mainTab === 'etfs' ? 'ETF' : 'Stock'}
-                    </button>
+            {/* ── INVESTMENT HISTORY ── */}
+            {subTab==='investments'&&(
+              <div className="space-y-3">
+                {currentAssets.length===0 ? (
+                  <div className="card p-10 text-center">
+                    <Calendar size={36} className="text-[#C9A84C]/40 mx-auto mb-3"/>
+                    <p className="font-medium text-[#0D0D0D] mb-1">No assets added yet</p>
+                    <p className="text-sm text-[#8A8070]">Add assets before logging investments</p>
                   </div>
-                ) : currentInvestments.length === 0 ? (
-                  <div className="card p-12 text-center">
-                    <Calendar size={40} className="text-gold/40 mx-auto mb-4" />
-                    <p className=" text-lg text-ink mb-1">No investments logged yet</p>
-                    <p className="text-sm text-muted mb-5">Start recording your {mainTab === 'mutual-funds' ? 'SIP payments' : mainTab === 'etfs' ? 'ETF purchases' : 'stock purchases'}</p>
-                    <button className="btn-primary" onClick={() => {
-                      setInvestmentAssetType(mainTab)
-                      setEditPayment(undefined)
-                      setShowInvestmentModal(true)
-                    }}>
-                      Log First Investment
-                    </button>
+                ) : currentPayments.length===0 ? (
+                  <div className="card p-10 text-center">
+                    <Calendar size={36} className="text-[#C9A84C]/40 mx-auto mb-3"/>
+                    <p className="font-medium text-[#0D0D0D] mb-1">No investments logged yet</p>
+                    <button className="btn-primary mx-auto mt-4" onClick={()=>openInvest(mainTab)}><Plus size={14}/>Log First Investment</button>
                   </div>
                 ) : (
-                  <div className="card overflow-hidden">
-                    <div className="overflow-x-auto scrollbar-thin">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-gold/15 bg-paper/50">
-                            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">Month</th>
-                            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">Name</th>
-                            <th className="text-right px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">Amount</th>
-                            {(mainTab === 'etfs' || mainTab === 'stocks') && (
-                              <>
-                                <th className="text-right px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">Quantity</th>
-                                <th className="text-right px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">Price</th>
-                              </>
-                            )}
-                            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">Notes</th>
-                            <th className="px-4 py-3" />
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {[...currentInvestments].sort((a, b) => b.date.localeCompare(a.date)).map((p) => {
-                            const asset = currentAssets.find((a) => a.id === p.assetId)
+                  <>
+                    <SearchBar value={histSearch} onChange={setHistSearch} placeholder="Search by fund name, month (e.g. Jun), notes..."/>
+                    {filteredPayments.length===0 ? (
+                      <div className="card p-8 text-center">
+                        <Search size={28} className="text-[#C9A84C]/40 mx-auto mb-2"/>
+                        <p className="text-sm text-[#8A8070]">No results for "{histSearch}"</p>
+                      </div>
+                    ) : (
+                      /* Mobile: card list; Desktop: table */
+                      <>
+                        {/* Mobile view */}
+                        <div className="sm:hidden space-y-2">
+                          {[...filteredPayments].sort((a,b)=>b.date.localeCompare(a.date)).map(p=>{
+                            const asset=currentAssets.find(a=>a.id===p.assetId)
                             return (
-                              <tr key={p.id} className="border-b border-gold/10 hover:bg-paper/40 transition-colors">
-                                <td className="px-4 py-3 font-mono text-xs text-muted">{getMonthLabel(p.date)}</td>
-                                <td className="px-4 py-3">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full" style={{ background: asset?.color ?? '#ccc' }} />
-                                    <span className="truncate max-w-[180px]">{asset?.name ?? 'Unknown'}</span>
+                              <div key={p.id} className="card p-3">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <div className="w-2 h-2 rounded-full shrink-0 mt-1" style={{background:asset?.color??'#ccc'}}/>
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium text-[#0D0D0D] truncate">{asset?.name??'Unknown'}</p>
+                                      <p className="text-xs text-[#8A8070]">{getMonthLabel(p.date)}</p>
+                                    </div>
                                   </div>
-                                </td>
-                                <td className="px-4 py-3 text-right font-medium text-emerald">₹{p.amount.toLocaleString('en-IN')}</td>
-                                {(mainTab === 'etfs' || mainTab === 'stocks') && (
-                                  <>
-                                    <td className="px-4 py-3 text-right text-muted">{p.quantity || '—'}</td>
-                                    <td className="px-4 py-3 text-right text-muted">{p.price ? `₹${p.price}` : '—'}</td>
-                                  </>
+                                  <div className="text-right shrink-0">
+                                    <p className="font-semibold text-[#1A5C3A] text-sm">₹{p.amount.toLocaleString('en-IN')}</p>
+                                  </div>
+                                </div>
+                                {(p.nav||p.units||p.quantity||p.price)&&(
+                                  <div className="flex flex-wrap gap-2 mt-2">
+                                    {p.nav&&<span className="text-xs bg-[#F5F0E8] text-[#8A8070] px-2 py-0.5 rounded-lg">NAV ₹{p.nav}</span>}
+                                    {p.units&&<span className="text-xs bg-[#F5F0E8] text-[#4A148C] px-2 py-0.5 rounded-lg">{p.units} units</span>}
+                                    {p.price&&!p.nav&&<span className="text-xs bg-[#F5F0E8] text-[#8A8070] px-2 py-0.5 rounded-lg">₹{p.price}/unit</span>}
+                                    {p.quantity&&<span className="text-xs bg-[#F5F0E8] text-[#0D0D0D] px-2 py-0.5 rounded-lg">Qty {p.quantity}</span>}
+                                  </div>
                                 )}
-                                <td className="px-4 py-3 text-muted text-xs truncate max-w-[120px]">{p.notes || '—'}</td>
-                                <td className="px-4 py-3">
-                                  <div className="flex gap-1 justify-end">
-                                    <button onClick={() => {
-                                      setEditPayment(p)
-                                      setInvestmentAssetType(mainTab)
-                                      setShowInvestmentModal(true)
-                                    }} className="p-1.5 text-muted hover:text-ink rounded-lg hover:bg-paper transition-all">
-                                      <Edit3 size={13} />
-                                    </button>
-                                    <button onClick={() => deletePayment(p.id)} className="p-1.5 text-muted hover:text-red-500 rounded-lg hover:bg-paper transition-all">
-                                      <Trash2 size={13} />
-                                    </button>
+                                <div className="flex items-center justify-between mt-2">
+                                  <span className="text-xs text-[#8A8070] truncate">{p.notes||''}</span>
+                                  <div className="flex gap-1">
+                                    <button onClick={()=>{setEditPayment(p);setInvestAssetType(mainTab);setPreSelectedAssetId(null);setShowInvestModal(true)}} className="p-1.5 text-[#8A8070] hover:text-[#0D0D0D] rounded-lg"><Edit3 size={12}/></button>
+                                    <button onClick={()=>deletePayment(p.id)} className="p-1.5 text-[#8A8070] hover:text-red-500 rounded-lg"><Trash2 size={12}/></button>
                                   </div>
-                                </td>
-                              </tr>
+                                </div>
+                              </div>
                             )
                           })}
-                        </tbody>
-                        <tfoot>
-                          <tr className="bg-paper/50">
-                            <td colSpan={2} className="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">Total</td>
-                            <td className="px-4 py-3 text-right font-bold text-emerald">₹{currentInvestments.reduce((s, p) => s + p.amount, 0).toLocaleString('en-IN')}</td>
-                            {(mainTab === 'etfs' || mainTab === 'stocks') && (
-                              <>
-                                <td colSpan={2} />
-                              </>
-                            )}
-                            <td colSpan={2} />
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
-                  </div>
+                          <div className="card p-3 flex justify-between">
+                            <span className="text-xs font-medium text-[#8A8070]">Total ({filteredPayments.length} entries)</span>
+                            <span className="font-bold text-[#1A5C3A]">₹{filteredPayments.reduce((s,p)=>s+p.amount,0).toLocaleString('en-IN')}</span>
+                          </div>
+                        </div>
+
+                        {/* Desktop table */}
+                        <div className="hidden sm:block card overflow-hidden">
+                          <div className="overflow-x-auto scrollbar-thin">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b border-[#C9A84C]/15 bg-[#F5F0E8]/50">
+                                  <th className="text-left px-4 py-3 text-xs font-medium text-[#8A8070] uppercase tracking-wide">Month</th>
+                                  <th className="text-left px-4 py-3 text-xs font-medium text-[#8A8070] uppercase tracking-wide">Name</th>
+                                  <th className="text-right px-4 py-3 text-xs font-medium text-[#8A8070] uppercase tracking-wide">Amount</th>
+                                  {isMFTab&&<><th className="text-right px-4 py-3 text-xs font-medium text-[#8A8070] uppercase tracking-wide">NAV</th><th className="text-right px-4 py-3 text-xs font-medium text-[#8A8070] uppercase tracking-wide">Units</th></>}
+                                  {(isETFTab||isStockTab)&&<><th className="text-right px-4 py-3 text-xs font-medium text-[#8A8070] uppercase tracking-wide">Price</th><th className="text-right px-4 py-3 text-xs font-medium text-[#8A8070] uppercase tracking-wide">Qty</th></>}
+                                  <th className="text-left px-4 py-3 text-xs font-medium text-[#8A8070] uppercase tracking-wide">Notes</th>
+                                  <th className="px-4 py-3"/>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {[...filteredPayments].sort((a,b)=>b.date.localeCompare(a.date)).map(p=>{
+                                  const asset=currentAssets.find(a=>a.id===p.assetId)
+                                  return (
+                                    <tr key={p.id} className="border-b border-[#C9A84C]/10 hover:bg-[#F5F0E8]/40 transition-colors">
+                                      <td className="px-4 py-3 font-mono text-xs text-[#8A8070]">{getMonthLabel(p.date)}</td>
+                                      <td className="px-4 py-3">
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-2 h-2 rounded-full shrink-0" style={{background:asset?.color??'#ccc'}}/>
+                                          <span className="truncate max-w-[160px]">{asset?.name??'Unknown'}</span>
+                                        </div>
+                                      </td>
+                                      <td className="px-4 py-3 text-right font-medium text-[#1A5C3A]">₹{p.amount.toLocaleString('en-IN')}</td>
+                                      {isMFTab&&<>
+                                        <td className="px-4 py-3 text-right text-[#8A8070]">{p.nav?`₹${p.nav}`:'—'}</td>
+                                        <td className="px-4 py-3 text-right text-[#4A148C] font-medium">{p.units||'—'}</td>
+                                      </>}
+                                      {(isETFTab||isStockTab)&&<>
+                                        <td className="px-4 py-3 text-right text-[#8A8070]">{p.price?`₹${p.price}`:'—'}</td>
+                                        <td className="px-4 py-3 text-right text-[#8A8070]">{p.quantity||'—'}</td>
+                                      </>}
+                                      <td className="px-4 py-3 text-[#8A8070] text-xs truncate max-w-[100px]">{p.notes||'—'}</td>
+                                      <td className="px-4 py-3">
+                                        <div className="flex gap-1 justify-end">
+                                          <button onClick={()=>{setEditPayment(p);setInvestAssetType(mainTab);setPreSelectedAssetId(null);setShowInvestModal(true)}} className="p-1.5 text-[#8A8070] hover:text-[#0D0D0D] rounded-lg hover:bg-[#F5F0E8] transition-all"><Edit3 size={13}/></button>
+                                          <button onClick={()=>deletePayment(p.id)} className="p-1.5 text-[#8A8070] hover:text-red-500 rounded-lg hover:bg-[#F5F0E8] transition-all"><Trash2 size={13}/></button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                              <tfoot>
+                                <tr className="bg-[#F5F0E8]/50">
+                                  <td colSpan={2} className="px-4 py-3 text-xs font-medium text-[#8A8070]">Total ({filteredPayments.length} entries)</td>
+                                  <td className="px-4 py-3 text-right font-bold text-[#1A5C3A]">₹{filteredPayments.reduce((s,p)=>s+p.amount,0).toLocaleString('en-IN')}</td>
+                                  <td colSpan={99}/>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </>
                 )}
-              </>
+              </div>
             )}
           </div>
         )}
       </main>
 
-      {/* Modals */}
-      {showFundModal && (
-        <FundModal fund={editFund} onSave={saveFund} onClose={() => { setShowFundModal(false); setEditFund(undefined) }} />
-      )}
-      {showETFModal && (
-        <ETFModal etf={editETF} onSave={saveETF} onClose={() => { setShowETFModal(false); setEditETF(undefined) }} />
-      )}
-      {showStockModal && (
-        <StockModal stock={editStock} onSave={saveStock} onClose={() => { setShowStockModal(false); setEditStock(undefined) }} />
-      )}
-      {showInvestmentModal && (
+      {/* ── Modals ── */}
+      {showFundModal&&<FundModal fund={editFund} onSave={saveFund} onClose={()=>{setShowFundModal(false);setEditFund()}}/>}
+      {showETFModal&&<ETFModal etf={editETF} onSave={saveETF} onClose={()=>{setShowETFModal(false);setEditETF()}}/>}
+      {showStockModal&&<StockModal stock={editStock} onSave={saveStock} onClose={()=>{setShowStockModal(false);setEditStock()}}/>}
+      {showInvestModal&&(
         <InvestmentModal
-          assetType={investmentAssetType}
-          funds={data.funds}
-          etfs={data.etfs}
-          stocks={data.stocks}
+          assetType={investAssetType}
+          funds={data.funds} etfs={data.etfs} stocks={data.stocks}
           payment={editPayment}
+          preSelectedAssetId={preSelectedAssetId}
           onSave={savePayment}
-          onClose={() => { setShowInvestmentModal(false); setEditPayment(undefined) }}
+          onClose={()=>{setShowInvestModal(false);setEditPayment();setPreSelectedAssetId(null)}}
         />
       )}
-      {showProjection && (
-        <ProjectionModal funds={data.funds} etfs={data.etfs} stocks={data.stocks} payments={data.payments} onClose={() => setShowProjection(false)} />
-      )}
-      <span className='flex justify-center text-muted text-sm pb-4'>Copyright © 2026 Sudeep Teja.</span>
+      {showProjection&&<ProjectionModal funds={data.funds} etfs={data.etfs} stocks={data.stocks} onClose={()=>setShowProjection(false)}/>}
+      {/* {showGlobalSearch&&<GlobalSearchModal data={data} onClose={()=>setShowGlobalSearch(false)} onNavigate={(tab,sub)=>{setMainTab(tab);if(sub)setSubTab(sub)}}/>} */}
+
+      <p className="text-center text-[#8A8070] text-xs pb-4">Copyright © 2026 Sudeep Teja.</p>
     </div>
   )
 }
