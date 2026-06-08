@@ -394,19 +394,28 @@ function InvestmentModal({ assetType, funds, etfs, stocks, payment, preSelectedA
   const defaultAssetId = preSelectedAssetId || payment?.assetId || (assets[0]?.id ?? '')
   const lockedAsset = preSelectedAssetId ? assets.find(a => a.id === preSelectedAssetId) : null
 
+  const getDefaultAmount = () => {
+    if (payment?.amount) return payment.amount
+    const defaultAsset = assets.find(a => a.id === defaultAssetId)
+    if (defaultAsset && ('sipAmount' in defaultAsset)) {
+      return defaultAsset.sipAmount
+    }
+    return 1000
+  }
+
   const [form, setForm] = useState({
     assetId: defaultAssetId,
     date: payment?.date ?? currentYearMonth(),
-    amount: payment?.amount ?? (assets.find(a => a.id === defaultAssetId) && 'sipAmount' in assets.find(a => a.id === defaultAssetId)! ? (assets.find(a => a.id === defaultAssetId) as MutualFund | ETF).sipAmount : 1000),
-    quantity: payment?.quantity ?? '',
-    price: payment?.price ?? '',
-    nav: payment?.nav ?? '',
-    units: payment?.units ?? '',
+    amount: getDefaultAmount(),
+    quantity: payment?.quantity?.toString() ?? '',
+    price: payment?.price?.toString() ?? '',
+    nav: payment?.nav?.toString() ?? '',
+    units: payment?.units?.toString() ?? '',
     notes: payment?.notes ?? '',
   })
+
   const setField = (k: keyof typeof form, v: any) => setForm(p => ({ ...p, [k]: v }))
 
-  const selectedAsset = assets.find(a => a.id === form.assetId)
   const isMF = assetType === 'mutual-funds'
   const isStock = assetType === 'stocks'
   const isETF = assetType === 'etfs'
@@ -596,7 +605,12 @@ function GlobalSearchModal({ data, onClose, onNavigate }: GlobalSearchModalProps
   ]
   const months = [...new Set(data.payments.map(p => p.date))].sort().reverse()
   const lq = q.toLowerCase()
-  const filteredAssets = q.length > 1 ? allAssets.filter(a => a.name.toLowerCase().includes(lq) || a.category?.toLowerCase().includes(lq) || (a?.symbol?.toLowerCase().includes(lq) ?? false)) : []
+  const filteredAssets = q.length > 1 ? allAssets.filter(a => {
+    const matchesName = a.name.toLowerCase().includes(lq)
+    const matchesCategory = a.category?.toLowerCase().includes(lq)
+    const matchesSymbol = 'symbol' in a && a.symbol?.toLowerCase().includes(lq)
+    return matchesName || matchesCategory || matchesSymbol
+  }) : []
   const filteredMonths = q.length > 1 ? months.filter(m => getMonthLabel(m).toLowerCase().includes(lq)) : []
 
   const go = (tab: string, sub: string) => { onNavigate(tab, sub); onClose() }
@@ -991,8 +1005,8 @@ export default function App() {
                 setHistSearch('');
               }}
               className={`flex items-center gap-1.5 px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-all shrink-0 -mb-px whitespace-nowrap ${mainTab === id
-                  ? 'border-[#C9A84C] text-[#8B6914]'
-                  : 'border-transparent text-[#8A8070] hover:text-[#0D0D0D]'
+                ? 'border-[#C9A84C] text-[#8B6914]'
+                : 'border-transparent text-[#8A8070] hover:text-[#0D0D0D]'
                 }`}
             >
               <Icon size={13} />
