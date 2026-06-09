@@ -258,7 +258,7 @@ function Modal({ title, onClose, children, wide = false }: ModalProps) {
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
       <div
-        className={`relative bg-[#FDF8F0] rounded-t-3xl sm:rounded-2xl shadow-2xl border border-[#C9A84C]/20 w-full ${wide ? 'sm:max-w-2xl' : 'sm:max-w-md'} p-5 sm:p-6 max-h-[92vh] overflow-y-auto`}
+        className={`relative bg-[#fff] rounded-t-3xl sm:rounded-2xl shadow-2xl border border-[#C9A84C]/20 w-full ${wide ? 'sm:max-w-2xl' : 'sm:max-w-md'} p-5 sm:p-6 max-h-[92vh] overflow-y-auto`}
         onClick={e => e.stopPropagation()}>
         <div className="sm:hidden w-10 h-1 bg-[#C9A84C]/30 rounded-full mx-auto mb-4" />
         <div className="flex items-center justify-between mb-5">
@@ -461,7 +461,7 @@ function InvestmentModal({ assetType, funds, etfs, stocks, payment, preSelectedA
       <div className="space-y-4">
         <Field label={assetLabel}>
           {lockedAsset ? (
-            <div className="inp flex items-center gap-2 cursor-not-allowed bg-[#F5F0E8]">
+            <div className="inp flex items-center gap-2 cursor-not-allowed bg-[#fff]">
               <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: lockedAsset.color }} />
               <span className="truncate font-medium text-[#0D0D0D]">{lockedAsset.name}</span>
               {'symbol' in lockedAsset && <span className="text-[#8A8070] text-xs shrink-0">({lockedAsset.symbol})</span>}
@@ -562,7 +562,7 @@ function ProjectionModal({ funds, etfs, stocks, onClose }: ProjectionModalProps)
       <div className="flex flex-wrap gap-2 mb-4">
         <span className="text-sm text-[#8A8070] self-center">Project for</span>
         {[3, 5, 10, 15, 20, 25, 30].map(y => (
-          <button key={y} onClick={() => setYears(y)} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${years === y ? 'bg-[#C9A84C] text-[#0D0D0D]' : 'bg-[#F5F0E8] text-[#8A8070] hover:text-[#0D0D0D]'}`}>{y}Y</button>
+          <button key={y} onClick={() => setYears(y)} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${years === y ? 'bg-[#C9A84C] text-[#0D0D0D]' : 'bg-[#fff] text-[#8A8070] hover:text-[#0D0D0D]'}`}>{y}Y</button>
         ))}
       </div>
       <div className="grid grid-cols-3 gap-3 mb-4">
@@ -571,7 +571,7 @@ function ProjectionModal({ funds, etfs, stocks, onClose }: ProjectionModalProps)
           [`Total Invested (${years}Y)`, '₹' + (total * years * 12).toLocaleString('en-IN'), 'text-[#0D0D0D]'],
           ['Projected Value', '₹' + Math.round(proj / 100000).toLocaleString('en-IN') + 'L', 'text-[#8B6914]']
         ].map(([l, v, c]) => (
-          <div key={l} className="bg-[#F5F0E8] rounded-xl p-3">
+          <div key={l} className="bg-[#fff] rounded-xl p-3">
             <p className="text-xs text-[#8A8070]">{l}</p>
             <p className={`font-bold text-lg ${c}`}>{v}</p>
           </div>
@@ -698,7 +698,7 @@ function SearchBar({ value, onChange, placeholder }: SearchBarProps) {
     <div className="relative">
       <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8A8070]" />
       <input
-        className="w-full pl-9 pr-3 py-2 bg-[#F5F0E8] border border-[#C9A84C]/20 rounded-xl text-sm text-[#0D0D0D] placeholder-[#8A8070] focus:outline-none focus:border-[#C9A84C] transition-all"
+        className="w-full pl-9 pr-3 py-2 bg-[#fff] border border-[#C9A84C]/20 rounded-xl text-sm text-[#0D0D0D] placeholder-[#8A8070] focus:outline-none focus:border-[#C9A84C] transition-all"
         placeholder={placeholder}
         value={value}
         onChange={e => onChange(e.target.value)}
@@ -938,7 +938,7 @@ export default function App() {
   if (!loaded) {
     const hasSaved = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null
     return (
-      <div className="min-h-screen bg-[#F5F0E8] flex flex-col items-center justify-center p-6">
+      <div className="min-h-screen bg-[#fff] flex flex-col items-center justify-center p-6">
         <div className="max-w-sm w-full text-center">
           <div className="w-14 h-14 rounded-2xl bg-[#1A5C3A] flex items-center justify-center mx-auto mb-5">
             <TrendingUp size={26} className="text-[#FDF8F0]" />
@@ -951,7 +951,7 @@ export default function App() {
             <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleUpload} />
             <button className="btn-gold w-full" onClick={() => fileRef.current?.click()}><Upload size={14} className="inline mr-2" />Upload Excel File</button>
           </div>
-          <div className="relative my-3"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[#C9A84C]/20" /></div><span className="relative bg-[#F5F0E8] px-3 text-xs text-[#8A8070]">or</span></div>
+          <div className="relative my-3"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[#C9A84C]/20" /></div><span className="relative bg-[#fff] px-3 text-xs text-[#8A8070]">or</span></div>
           <button className="btn-outline w-full" onClick={startFresh}><Plus size={14} className="inline mr-2" />Start Fresh</button>
         </div>
       </div>
@@ -965,25 +965,11 @@ export default function App() {
   const isStockTab = mainTab === 'stocks'
 
   return (
-    <div className="min-h-screen bg-[#F5F0E8]">
-      <style>{`
-        .inp{width:100%;background:#F5F0E8;border:1px solid rgba(201,168,76,0.3);border-radius:12px;padding:10px 14px;font-size:14px;color:#0D0D0D;outline:none;transition:all 0.15s;}
-        .inp:focus{border-color:#C9A84C;box-shadow:0 0 0 3px rgba(201,168,76,0.12);}
-        .inp option{background:#FDF8F0;}
-        .btn-primary{background:#1A5C3A;color:#FDF8F0;font-weight:500;padding:9px 10px;border-radius:12px;font-size:13px;transition:all 0.2s;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
-        .btn-primary:hover{background:#15492e;}
-        .btn-gold{background:#C9A84C;color:#0D0D0D;font-weight:600;padding:9px 10px;border-radius:12px;font-size:12px;transition:all 0.2s;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
-        .btn-gold:hover{background:#b8973e;}
-        .btn-outline{background:transparent;color:#0D0D0D;font-weight:500;padding:9px 18px;border-radius:12px;font-size:14px;transition:all 0.2s;border:1px solid rgba(201,168,76,0.4);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
-        .btn-outline:hover{background:rgba(201,168,76,0.08);}
-        .card{background:#fff;border:1px solid rgba(201,168,76,0.2);border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,0.04);}
-        select.inp{-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238A8070' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;}
-        .scrollbar-thin::-webkit-scrollbar{width:4px;height:4px;}
-        .scrollbar-thin::-webkit-scrollbar-thumb{background:rgba(201,168,76,0.4);border-radius:99px;}
-      `}</style>
+    <div className="min-h-screen bg-[#fff]">
+
 
       {/* ── Header ── */}
-      <header className="bg-[#FDF8F0] border-b border-[#C9A84C]/15 sticky top-0 z-30">
+      <header className="bg-[#fff] border-b border-[#C9A84C]/15 sticky top-0 z-30 shadow-sm">
         <div className="max-w-6xl mx-auto px-3 sm:px-4 py-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 shrink-0">
             <div className="w-8 h-8 rounded-xl bg-[#1A5C3A] flex items-center justify-center">
@@ -1026,7 +1012,7 @@ export default function App() {
                 setHistSearch('');
               }}
               className={`flex items-center gap-1.5 px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-all shrink-0 -mb-px whitespace-nowrap ${mainTab === id
-                ? 'border-[#C9A84C] text-[#8B6914]'
+                ? 'border-[#1A5C3A] text-[#1A5C3A]'
                 : 'border-transparent text-[#8A8070] hover:text-[#0D0D0D]'
                 }`}
             >
@@ -1037,7 +1023,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+      <main className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-3">
 
         {/* ── DASHBOARD ── */}
         {mainTab === 'dashboard' && (
@@ -1163,7 +1149,7 @@ export default function App() {
                   ['investments', 'History']
                 ].map(([id, label]) => (
                   <button key={id} onClick={() => { setSubTab(id); setListSearch(''); setHistSearch('') }}
-                    className={`px-3 sm:px-4 py-2 text-sm font-medium transition-all whitespace-nowrap ${subTab === id ? 'text-[#8B6914] border-b-2 border-[#C9A84C]' : 'text-[#8A8070] hover:text-[#0D0D0D]'}`}>
+                    className={`px-3 sm:px-4 py-2 text-sm font-medium transition-all whitespace-nowrap ${subTab === id ? 'text-[#1A5C3A] border-b-2 border-[#1A5C3A]' : 'text-[#8A8070] hover:text-[#0D0D0D]'}`}>
                     {label}
                     {id === 'investments' && currentPayments.length > 0 && <span className="ml-1.5 text-xs bg-[#1A5C3A]/10 text-[#1A5C3A] px-1.5 py-0.5 rounded-full">{currentPayments.length}</span>}
                   </button>
@@ -1249,41 +1235,41 @@ export default function App() {
 
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
                               {(isMutualFund(asset) || isETF(asset)) && (
-                                <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                                <div className="bg-[#fff] rounded-xl p-2.5 border shadow-sm">
                                   <p className="text-xs text-[#8A8070]">Monthly SIP</p>
                                   <p className="font-bold text-[#1A5C3A] text-sm">₹{asset.sipAmount.toLocaleString('en-IN')}</p>
                                 </div>
                               )}
-                              <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                              <div className="bg-[#fff] rounded-xl p-2.5 border shadow-sm">
                                 <p className="text-xs text-[#8A8070]">Total Invested</p>
                                 <p className="font-bold text-[#0D0D0D] text-sm">₹{invested.toLocaleString('en-IN')}</p>
                               </div>
-                              <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                              <div className="bg-[#fff] rounded-xl p-2.5 border shadow-sm">
                                 <p className="text-xs text-[#8A8070]">Entries</p>
                                 <p className="font-bold text-[#0D0D0D] text-sm">{investments.length}</p>
                               </div>
 
                               {isMFTab && lastNav && (
-                                <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                                <div className="bg-[#fff] rounded-xl p-2.5 border shadow-sm">
                                   <p className="text-xs text-[#8A8070]">Last NAV</p>
                                   <p className="font-bold text-[#8B6914] text-sm">₹{lastNav.toFixed(3)}</p>
                                 </div>
                               )}
                               {isMFTab && totalUnits > 0 && (
-                                <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                                <div className="bg-[#fff] rounded-xl p-2.5 border shadow-sm">
                                   <p className="text-xs text-[#8A8070]">Total Units</p>
                                   <p className="font-bold text-[#4A148C] text-sm">{totalUnits.toFixed(3)}</p>
                                 </div>
                               )}
 
                               {isETFTab && lastPrice && (
-                                <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                                <div className="bg-[#fff] rounded-xl p-2.5 border shadow-sm">
                                   <p className="text-xs text-[#8A8070]">Last Price</p>
                                   <p className="font-bold text-[#8B6914] text-sm">₹{lastPrice.toFixed(2)}</p>
                                 </div>
                               )}
                               {isETFTab && totalQty > 0 && (
-                                <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                                <div className="bg-[#fff] rounded-xl p-2.5 border shadow-sm">
                                   <p className="text-xs text-[#8A8070]">Total Units</p>
                                   <p className="font-bold text-[#4A148C] text-sm">{totalQty}</p>
                                 </div>
@@ -1291,16 +1277,16 @@ export default function App() {
 
                               {isStock(asset) && (
                                 <>
-                                  <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                                  <div className="bg-[#fff] rounded-xl p-2.5 border shadow-sm">
                                     <p className="text-xs text-[#8A8070]">Quantity</p>
                                     <p className="font-bold text-[#0D0D0D] text-sm">{totalQty > 0 ? totalQty : asset.quantity}</p>
                                   </div>
-                                  <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                                  <div className="bg-[#fff] rounded-xl p-2.5 border shadow-sm">
                                     <p className="text-xs text-[#8A8070]">Avg Buy Price</p>
                                     <p className="font-bold text-[#8B6914] text-sm">₹{asset.buyPrice.toLocaleString('en-IN')}</p>
                                   </div>
                                   {lastPrice && (
-                                    <div className="bg-[#F5F0E8] rounded-xl p-2.5">
+                                    <div className="bg-[#fff] rounded-xl p-2.5 border shadow-sm">
                                       <p className="text-xs text-[#8A8070]">Last Price</p>
                                       <p className="font-bold text-[#1565C0] text-sm">₹{lastPrice.toLocaleString('en-IN')}</p>
                                     </div>
@@ -1362,10 +1348,10 @@ export default function App() {
                                 </div>
                                 {(p.nav || p.units || p.quantity || p.price) && (
                                   <div className="flex flex-wrap gap-2 mt-2">
-                                    {p.nav && <span className="text-xs bg-[#F5F0E8] text-[#8A8070] px-2 py-0.5 rounded-lg">NAV ₹{p.nav}</span>}
-                                    {p.units && <span className="text-xs bg-[#F5F0E8] text-[#4A148C] px-2 py-0.5 rounded-lg">{p.units} units</span>}
-                                    {p.price && !p.nav && <span className="text-xs bg-[#F5F0E8] text-[#8A8070] px-2 py-0.5 rounded-lg">₹{p.price}/unit</span>}
-                                    {p.quantity && <span className="text-xs bg-[#F5F0E8] text-[#0D0D0D] px-2 py-0.5 rounded-lg">Qty {p.quantity}</span>}
+                                    {p.nav && <span className="text-xs bg-[#fff] text-[#8A8070] px-2 py-0.5 rounded-lg">NAV ₹{p.nav}</span>}
+                                    {p.units && <span className="text-xs bg-[#fff] text-[#4A148C] px-2 py-0.5 rounded-lg">{p.units} units</span>}
+                                    {p.price && !p.nav && <span className="text-xs bg-[#fff] text-[#8A8070] px-2 py-0.5 rounded-lg">₹{p.price}/unit</span>}
+                                    {p.quantity && <span className="text-xs bg-[#fff] text-[#0D0D0D] px-2 py-0.5 rounded-lg">Qty {p.quantity}</span>}
                                   </div>
                                 )}
                                 <div className="flex items-center justify-between mt-2">
@@ -1390,12 +1376,12 @@ export default function App() {
                             <table className="w-full text-sm">
                               <thead>
                                 <tr className="border-b border-[#C9A84C]/15 bg-[#F5F0E8]/50">
-                                  <th className="text-left px-4 py-3 text-xs font-medium text-[#8A8070] uppercase tracking-wide">Month</th>
-                                  <th className="text-left px-4 py-3 text-xs font-medium text-[#8A8070] uppercase tracking-wide">Name</th>
-                                  <th className="text-right px-4 py-3 text-xs font-medium text-[#8A8070] uppercase tracking-wide">Amount</th>
-                                  {isMFTab && <><th className="text-right px-4 py-3 text-xs font-medium text-[#8A8070] uppercase tracking-wide">NAV</th><th className="text-right px-4 py-3 text-xs font-medium text-[#8A8070] uppercase tracking-wide">Units</th></>}
-                                  {(isETFTab || isStockTab) && <><th className="text-right px-4 py-3 text-xs font-medium text-[#8A8070] uppercase tracking-wide">Price</th><th className="text-right px-4 py-3 text-xs font-medium text-[#8A8070] uppercase tracking-wide">Qty</th></>}
-                                  <th className="text-left px-4 py-3 text-xs font-medium text-[#8A8070] uppercase tracking-wide">Notes</th>
+                                  <th className="text-left px-4 py-3 text-sm font-semibold text-[#4a4a4a] tracking-wide">Month</th>
+                                  <th className="text-left px-4 py-3 text-sm font-semibold text-[#4a4a4a] tracking-wide">Name</th>
+                                  <th className="text-right px-4 py-3 text-sm font-semibold text-[#4a4a4a] tracking-wide">Amount</th>
+                                  {isMFTab && <><th className="text-right px-4 py-3 text-sm font-semibold text-[#4a4a4a]  tracking-wide">NAV</th><th className="text-right px-4 py-3 text-sm font-semibold text-[#4a4a4a]  tracking-wide">Units</th></>}
+                                  {(isETFTab || isStockTab) && <><th className="text-right px-4 py-3 text-sm font-semibold text-[#4a4a4a]  tracking-wide">Price</th><th className="text-right px-4 py-3 text-sm font-semibold text-[#4a4a4a]  tracking-wide">Qty</th></>}
+                                  <th className="text-left px-4 py-3 text-sm font-semibold text-[#4a4a4a] tracking-wide">Notes</th>
                                   <th className="px-4 py-3" />
                                 </tr>
                               </thead>
@@ -1404,7 +1390,7 @@ export default function App() {
                                   const asset = currentAssets.find(a => a.id === p.assetId)
                                   return (
                                     <tr key={p.id} className="border-b border-[#C9A84C]/10 hover:bg-[#F5F0E8]/40 transition-colors">
-                                      <td className="px-4 py-3 font-mono text-xs text-[#8A8070]">{getMonthLabel(p.date)}</td>
+                                      <td className="px-4 py-3 text-sm text-[#4a4a4a]">{getMonthLabel(p.date)}</td>
                                       <td className="px-4 py-3">
                                         <div className="flex items-center gap-2">
                                           <div className="w-2 h-2 rounded-full shrink-0" style={{ background: asset?.color ?? '#ccc' }} />
@@ -1413,14 +1399,14 @@ export default function App() {
                                       </td>
                                       <td className="px-4 py-3 text-right font-medium text-[#1A5C3A]">₹{p.amount.toLocaleString('en-IN')}</td>
                                       {isMFTab && <>
-                                        <td className="px-4 py-3 text-right text-[#8A8070]">{p.nav ? `₹${p.nav}` : '—'}</td>
+                                        <td className="px-4 py-3 text-right text-[#4a4a4a]">{p.nav ? `₹${p.nav}` : '—'}</td>
                                         <td className="px-4 py-3 text-right text-[#4A148C] font-medium">{p.units || '—'}</td>
                                       </>}
                                       {(isETFTab || isStockTab) && <>
-                                        <td className="px-4 py-3 text-right text-[#8A8070]">{p.price ? `₹${p.price}` : '—'}</td>
-                                        <td className="px-4 py-3 text-right text-[#8A8070]">{p.quantity || '—'}</td>
+                                        <td className="px-4 py-3 text-right text-[#4a4a4a]">{p.price ? `₹${p.price}` : '—'}</td>
+                                        <td className="px-4 py-3 text-right text-[#4a4a4a]">{p.quantity || '—'}</td>
                                       </>}
-                                      <td className="px-4 py-3 text-[#8A8070] text-xs truncate max-w-[100px]">{p.notes || '—'}</td>
+                                      <td className="px-4 py-3 text-[#4a4a4a] text-xs truncate max-w-[100px]">{p.notes || '—'}</td>
                                       <td className="px-4 py-3">
                                         <div className="flex gap-1 justify-end">
                                           <button onClick={() => { setEditPayment(p); setInvestAssetType(mainTab); setPreSelectedAssetId(null); setShowInvestModal(true) }} className="p-1.5 text-[#8A8070] hover:text-[#0D0D0D] rounded-lg hover:bg-[#F5F0E8] transition-all"><Edit3 size={13} /></button>
@@ -1432,7 +1418,7 @@ export default function App() {
                                 })}
                               </tbody>
                               <tfoot>
-                                <tr className="bg-[#F5F0E8]/50">
+                                <tr className="bg-[#fff]/50">
                                   <td colSpan={2} className="px-4 py-3 text-xs font-medium text-[#8A8070]">Total ({filteredPayments.length} entries)</td>
                                   <td className="px-4 py-3 text-right font-bold text-[#1A5C3A]">₹{filteredPayments.reduce((s, p) => s + p.amount, 0).toLocaleString('en-IN')}</td>
                                   <td colSpan={99} />
