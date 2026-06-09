@@ -976,7 +976,7 @@ export default function App() {
         .btn-gold:hover{background:#b8973e;}
         .btn-outline{background:transparent;color:#0D0D0D;font-weight:500;padding:9px 18px;border-radius:12px;font-size:14px;transition:all 0.2s;border:1px solid rgba(201,168,76,0.4);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
         .btn-outline:hover{background:rgba(201,168,76,0.08);}
-        .card{background:#FDF8F0;border:1px solid rgba(201,168,76,0.2);border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,0.04);}
+        .card{background:#fff;border:1px solid rgba(201,168,76,0.2);border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,0.04);}
         select.inp{-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238A8070' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;}
         .scrollbar-thin::-webkit-scrollbar{width:4px;height:4px;}
         .scrollbar-thin::-webkit-scrollbar-thumb{background:rgba(201,168,76,0.4);border-radius:99px;}
