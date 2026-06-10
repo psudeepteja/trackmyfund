@@ -3,7 +3,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react"
 import {
   Upload, Download, Plus, Trash2, TrendingUp, Wallet,
   Calendar, BarChart3, X, Edit3, BarChart2,
-  Activity, Search, RefreshCw
+  Activity, Search, RefreshCw, Clock
 } from "lucide-react"
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -240,10 +240,12 @@ interface ProjectionModalProps {
   onClose: () => void
 }
 
-interface GlobalSearchModalProps {
-  data: AppData
+interface AssetHistoryModalProps {
+  asset: MutualFund | ETF | Stock
+  payments: Payment[]
   onClose: () => void
-  onNavigate: (tab: string, sub: string) => void
+  onEdit: (payment: Payment) => void
+  onDelete: (id: string) => void
 }
 
 interface SearchBarProps {
@@ -268,6 +270,163 @@ function Modal({ title, onClose, children, wide = false }: ModalProps) {
         {children}
       </div>
     </div>
+  )
+}
+
+// ─── Asset History Modal ──────────────────────────────────────────────────────
+function AssetHistoryModal({ asset, payments, onClose, onEdit, onDelete }: AssetHistoryModalProps) {
+  const isMF = asset.assetType === 'mutual-funds'
+  const isETFAsset = asset.assetType === 'etfs'
+  const isStockAsset = asset.assetType === 'stocks'
+
+  const sorted = [...payments].sort((a, b) => b.date.localeCompare(a.date))
+  const totalInvested = payments.reduce((s, p) => s + p.amount, 0)
+  const totalUnits = payments.reduce((s, p) => s + (p.units || 0), 0)
+  const totalQty = payments.reduce((s, p) => s + (p.quantity || 0), 0)
+  const avgNav = isMF && totalUnits > 0 ? totalInvested / totalUnits : null
+  const avgPrice = (isETFAsset || isStockAsset) && totalQty > 0 ? totalInvested / totalQty : null
+
+  return (
+    <Modal title={`${asset.name} — History`} onClose={onClose} wide>
+      {/* Summary strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5">
+        <div className="bg-[#F5F0E8] rounded-xl p-3">
+          <p className="text-xs text-[#8A8070]">Total Invested</p>
+          <p className="font-bold text-[#1A5C3A] text-sm">₹{totalInvested.toLocaleString('en-IN')}</p>
+        </div>
+        <div className="bg-[#F5F0E8] rounded-xl p-3">
+          <p className="text-xs text-[#8A8070]">Entries</p>
+          <p className="font-bold text-[#0D0D0D] text-sm">{payments.length}</p>
+        </div>
+        {isMF && totalUnits > 0 && (
+          <>
+            <div className="bg-[#F5F0E8] rounded-xl p-3">
+              <p className="text-xs text-[#8A8070]">Total Units</p>
+              <p className="font-bold text-[#4A148C] text-sm">{totalUnits.toFixed(3)}</p>
+            </div>
+            <div className="bg-[#F5F0E8] rounded-xl p-3">
+              <p className="text-xs text-[#8A8070]">Avg NAV</p>
+              <p className="font-bold text-[#8B6914] text-sm">₹{avgNav?.toFixed(3)}</p>
+            </div>
+          </>
+        )}
+        {(isETFAsset || isStockAsset) && totalQty > 0 && (
+          <>
+            <div className="bg-[#F5F0E8] rounded-xl p-3">
+              <p className="text-xs text-[#8A8070]">Total Qty</p>
+              <p className="font-bold text-[#4A148C] text-sm">{totalQty}</p>
+            </div>
+            {avgPrice !== null && (
+              <div className="bg-[#F5F0E8] rounded-xl p-3">
+                <p className="text-xs text-[#8A8070]">Avg Price</p>
+                <p className="font-bold text-[#8B6914] text-sm">₹{avgPrice.toFixed(2)}</p>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {payments.length === 0 ? (
+        <div className="text-center py-10">
+          <Calendar size={32} className="text-[#C9A84C]/40 mx-auto mb-2" />
+          <p className="text-sm text-[#8A8070]">No investments logged yet for this asset</p>
+        </div>
+      ) : (
+        <>
+          {/* Mobile list */}
+          <div className="sm:hidden space-y-2">
+            {sorted.map(p => (
+              <div key={p.id} className="border border-[#C9A84C]/15 rounded-xl p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-[#0D0D0D]">{getMonthLabel(p.date)}</p>
+                    <p className="text-xs text-[#8A8070]">{p.date}</p>
+                  </div>
+                  <p className="font-semibold text-[#1A5C3A]">₹{p.amount.toLocaleString('en-IN')}</p>
+                </div>
+                {(p.nav || p.units || p.quantity || p.price) && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {p.nav && <span className="text-xs bg-[#F5F0E8] text-[#8A8070] px-2 py-0.5 rounded-lg">NAV ₹{p.nav}</span>}
+                    {p.units && <span className="text-xs bg-[#F5F0E8] text-[#4A148C] px-2 py-0.5 rounded-lg">{p.units} units</span>}
+                    {p.price && !p.nav && <span className="text-xs bg-[#F5F0E8] text-[#8A8070] px-2 py-0.5 rounded-lg">₹{p.price}/unit</span>}
+                    {p.quantity && <span className="text-xs bg-[#F5F0E8] text-[#0D0D0D] px-2 py-0.5 rounded-lg">Qty {p.quantity}</span>}
+                  </div>
+                )}
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-xs text-[#8A8070] truncate">{p.notes || ''}</span>
+                  <div className="flex gap-1">
+                    <button onClick={() => onEdit(p)} className="p-1.5 text-[#8A8070] hover:text-[#0D0D0D] rounded-lg"><Edit3 size={12} /></button>
+                    <button onClick={() => onDelete(p.id)} className="p-1.5 text-[#8A8070] hover:text-red-500 rounded-lg"><Trash2 size={12} /></button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden sm:block border border-[#C9A84C]/15 rounded-xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[#C9A84C]/15 bg-[#F5F0E8]/60">
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-[#4a4a4a] tracking-wide">Month</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold text-[#4a4a4a] tracking-wide">Amount</th>
+                    {isMF && <>
+                      <th className="text-right px-4 py-3 text-xs font-semibold text-[#4a4a4a] tracking-wide">NAV</th>
+                      <th className="text-right px-4 py-3 text-xs font-semibold text-[#4a4a4a] tracking-wide">Units</th>
+                    </>}
+                    {(isETFAsset || isStockAsset) && <>
+                      <th className="text-right px-4 py-3 text-xs font-semibold text-[#4a4a4a] tracking-wide">Price</th>
+                      <th className="text-right px-4 py-3 text-xs font-semibold text-[#4a4a4a] tracking-wide">Qty</th>
+                    </>}
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-[#4a4a4a] tracking-wide">Notes</th>
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map(p => (
+                    <tr key={p.id} className="border-b border-[#C9A84C]/10 hover:bg-[#F5F0E8]/40 transition-colors">
+                      <td className="px-4 py-3 text-sm text-[#4a4a4a]">{getMonthLabel(p.date)}</td>
+                      <td className="px-4 py-3 text-right font-medium text-[#1A5C3A]">₹{p.amount.toLocaleString('en-IN')}</td>
+                      {isMF && <>
+                        <td className="px-4 py-3 text-right text-[#4a4a4a]">{p.nav ? `₹${p.nav}` : '—'}</td>
+                        <td className="px-4 py-3 text-right text-[#4A148C] font-medium">{p.units || '—'}</td>
+                      </>}
+                      {(isETFAsset || isStockAsset) && <>
+                        <td className="px-4 py-3 text-right text-[#4a4a4a]">{p.price ? `₹${p.price}` : '—'}</td>
+                        <td className="px-4 py-3 text-right text-[#4a4a4a]">{p.quantity || '—'}</td>
+                      </>}
+                      <td className="px-4 py-3 text-[#4a4a4a] text-xs truncate max-w-[100px]">{p.notes || '—'}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-1 justify-end">
+                          <button onClick={() => onEdit(p)} className="p-1.5 text-[#8A8070] hover:text-[#0D0D0D] rounded-lg hover:bg-[#F5F0E8] transition-all"><Edit3 size={13} /></button>
+                          <button onClick={() => onDelete(p.id)} className="p-1.5 text-[#8A8070] hover:text-red-500 rounded-lg hover:bg-[#F5F0E8] transition-all"><Trash2 size={13} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-[#F5F0E8]/30">
+                    <td className="px-4 py-3 text-xs font-medium text-[#8A8070]">Total ({payments.length} entries)</td>
+                    <td className="px-4 py-3 text-right font-bold text-[#1A5C3A]">₹{totalInvested.toLocaleString('en-IN')}</td>
+                    {isMF && <>
+                      <td className="px-4 py-3 text-right text-xs text-[#8A8070]">{avgNav ? `Avg ₹${avgNav.toFixed(3)}` : '—'}</td>
+                      <td className="px-4 py-3 text-right font-bold text-[#4A148C]">{totalUnits > 0 ? totalUnits.toFixed(3) : '—'}</td>
+                    </>}
+                    {(isETFAsset || isStockAsset) && <>
+                      <td className="px-4 py-3 text-right text-xs text-[#8A8070]">{avgPrice ? `Avg ₹${avgPrice.toFixed(2)}` : '—'}</td>
+                      <td className="px-4 py-3 text-right font-bold text-[#4A148C]">{totalQty > 0 ? totalQty : '—'}</td>
+                    </>}
+                    <td colSpan={99} />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </Modal>
   )
 }
 
@@ -595,83 +754,6 @@ function ProjectionModal({ funds, etfs, stocks, onClose }: ProjectionModalProps)
   )
 }
 
-// ─── Global Search Modal ──────────────────────────────────────────────────────
-// function GlobalSearchModal({ data, onClose, onNavigate }: GlobalSearchModalProps) {
-//   const [q, setQ] = useState('')
-//   const allAssets = [
-//     ...data.funds.map(f => ({ ...f, assetType: 'mutual-funds' as const, typeName: 'Mutual Fund' })),
-//     ...data.etfs.map(e => ({ ...e, assetType: 'etfs' as const, typeName: 'ETF' })),
-//     ...data.stocks.map(s => ({ ...s, assetType: 'stocks' as const, typeName: 'Stock' }))
-//   ]
-//   const months = [...new Set(data.payments.map(p => p.date))].sort().reverse()
-//   const lq = q.toLowerCase()
-//   const filteredAssets = q.length > 1 ? allAssets.filter(a => {
-//     const matchesName = a.name.toLowerCase().includes(lq)
-//     const matchesCategory = a.category?.toLowerCase().includes(lq)
-//     const matchesSymbol = 'symbol' in a && a.symbol?.toLowerCase().includes(lq)
-//     return matchesName || matchesCategory || matchesSymbol
-//   }) : []
-//   const filteredMonths = q.length > 1 ? months.filter(m => getMonthLabel(m).toLowerCase().includes(lq)) : []
-
-//   const go = (tab: string, sub: string) => { onNavigate(tab, sub); onClose() }
-
-//   return (
-//     <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4" onClick={onClose}>
-//       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-//       <div className="relative bg-[#FDF8F0] rounded-2xl shadow-2xl border border-[#C9A84C]/20 w-full max-w-lg" onClick={e => e.stopPropagation()}>
-//         <div className="flex items-center gap-3 px-4 py-3 border-b border-[#C9A84C]/15">
-//           <Search size={16} className="text-[#8A8070] shrink-0" />
-//           <input
-//             autoFocus
-//             className="flex-1 bg-transparent text-[#0D0D0D] text-sm outline-none placeholder-[#8A8070]"
-//             placeholder="Search by fund name, symbol, month..."
-//             value={q} onChange={e => setQ(e.target.value)}
-//           />
-//           {q && <button onClick={() => setQ('')} className="text-[#8A8070]"><X size={14} /></button>}
-//         </div>
-//         {q.length < 2 ? (
-//           <div className="px-4 py-6 text-center text-sm text-[#8A8070]">Type at least 2 characters to search</div>
-//         ) : filteredAssets.length === 0 && filteredMonths.length === 0 ? (
-//           <div className="px-4 py-6 text-center text-sm text-[#8A8070]">No results found for "{q}"</div>
-//         ) : (
-//           <div className="max-h-80 overflow-y-auto divide-y divide-[#C9A84C]/10">
-//             {filteredAssets.map(a => (
-//               <button key={a.id} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F5F0E8] text-left transition-colors"
-//                 onClick={() => go(a.assetType, 'list')}>
-//                 <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: a.color + '22' }}>
-//                   <div className="w-2 h-2 rounded-full" style={{ background: a.color }} />
-//                 </div>
-//                 <div className="flex-1 min-w-0">
-//                   <p className="text-sm font-medium text-[#0D0D0D] truncate">{a.name}</p>
-//                   <p className="text-xs text-[#8A8070]">{a.typeName} · {a.category}</p>
-//                 </div>
-//                 <span className="text-xs text-[#C9A84C] shrink-0">View →</span>
-//               </button>
-//             ))}
-//             {filteredMonths.map(m => {
-//               const mPayments = data.payments.filter(p => p.date === m)
-//               const total = mPayments.reduce((s, p) => s + p.amount, 0)
-//               return (
-//                 <button key={m} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F5F0E8] text-left transition-colors"
-//                   onClick={() => go('dashboard', '')}>
-//                   <div className="w-8 h-8 rounded-lg bg-[#1A5C3A]/10 flex items-center justify-center shrink-0">
-//                     <Calendar size={14} className="text-[#1A5C3A]" />
-//                   </div>
-//                   <div className="flex-1">
-//                     <p className="text-sm font-medium text-[#0D0D0D]">{getMonthLabel(m)}</p>
-//                     <p className="text-xs text-[#8A8070]">{mPayments.length} investments · ₹{total.toLocaleString('en-IN')}</p>
-//                   </div>
-//                   <span className="text-xs text-[#C9A84C] shrink-0">View →</span>
-//                 </button>
-//               )
-//             })}
-//           </div>
-//         )}
-//       </div>
-//     </div>
-//   )
-// }
-
 // ─── Small helpers ────────────────────────────────────────────────────────────
 function Field({ label, children }: FieldProps) {
   return <div><label className="text-xs font-medium text-[#8A8070] mb-1.5 block uppercase tracking-wide">{label}</label>{children}</div>
@@ -729,7 +811,6 @@ export default function App() {
   const [subTab, setSubTab] = useState('list')
   const [listSearch, setListSearch] = useState('')
   const [histSearch, setHistSearch] = useState('')
-  const [showGlobalSearch, setShowGlobalSearch] = useState(false)
 
   // Modals
   const [showFundModal, setShowFundModal] = useState(false)
@@ -743,6 +824,9 @@ export default function App() {
   const [editPayment, setEditPayment] = useState<Payment | undefined>()
   const [preSelectedAssetId, setPreSelectedAssetId] = useState<string | null>(null)
   const [showProjection, setShowProjection] = useState(false)
+
+  // Per-asset history modal
+  const [historyAsset, setHistoryAsset] = useState<MutualFund | ETF | Stock | null>(null)
 
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -759,18 +843,6 @@ export default function App() {
         console.error(e)
       }
     }
-  }, [])
-
-  // Keyboard shortcut for global search
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault()
-        setShowGlobalSearch(true)
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
   }, [])
 
   const updateData = useCallback((fn: AppData | ((prev: AppData) => AppData)) => {
@@ -863,6 +935,15 @@ export default function App() {
     setInvestAssetType(assetType)
     setPreSelectedAssetId(assetId)
     setEditPayment(undefined)
+    setShowInvestModal(true)
+  }
+
+  // Open asset history from the history modal (edit)
+  const openEditFromHistory = (payment: Payment) => {
+    setHistoryAsset(null)
+    setEditPayment(payment)
+    setInvestAssetType(payment.assetType)
+    setPreSelectedAssetId(null)
     setShowInvestModal(true)
   }
 
@@ -967,7 +1048,6 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#fff]">
 
-
       {/* ── Header ── */}
       <header className="bg-[#fff] border-b border-[#C9A84C]/15 sticky top-0 z-30 shadow-sm">
         <div className="max-w-6xl mx-auto px-3 sm:px-4 py-3 flex items-center justify-between gap-2">
@@ -977,16 +1057,6 @@ export default function App() {
             </div>
             <span className="font-bold text-[#0D0D0D] text-sm sm:block">TrackMyFund</span>
           </div>
-
-          {/* Global Search Bar */}
-          {/* <button
-            className="flex-1 max-w-xs flex items-center gap-2 bg-[#F5F0E8] border border-[#C9A84C]/20 rounded-xl px-3 py-2 text-sm text-[#8A8070] hover:border-[#C9A84C] transition-all"
-            onClick={() => setShowGlobalSearch(true)}>
-            <Search size={13} />
-            <span className="hidden sm:block">Search funds, months...</span>
-            <span className="sm:hidden">Search...</span>
-            <span className="ml-auto text-xs hidden sm:block opacity-60">⌘K</span>
-          </button> */}
 
           <div className="flex items-center gap-1.5 shrink-0">
             <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleUpload} />
@@ -1199,11 +1269,11 @@ export default function App() {
                   filteredAssets.map(asset => {
                     const invested = calcTotalInvested(data.payments, asset.id, mainTab)
                     const investments = data.payments.filter(p => p.assetId === asset.id && p.assetType === mainTab)
-                    const lastPayment = investments.sort((a, b) => b.date.localeCompare(a.date))[0]
                     const totalUnits = investments.reduce((s, p) => s + (p.units || 0), 0)
-                    const lastNav = lastPayment?.nav
-                    const lastPrice = lastPayment?.price
                     const totalQty = investments.reduce((s, p) => s + (p.quantity || 0), 0)
+                    // Avg NAV = total invested / total units (weighted average cost)
+                    const avgNav = isMFTab && totalUnits > 0 ? invested / totalUnits : null
+                    const lastPrice = [...investments].sort((a, b) => b.date.localeCompare(a.date))[0]?.price
 
                     return (
                       <div key={asset.id} className="card p-4 sm:p-5">
@@ -1219,17 +1289,34 @@ export default function App() {
                                 <p className="text-xs text-[#8A8070] mt-0.5">{asset.category} · Since {asset.startDate} · {asset.expectedReturn}% CAGR</p>
                               </div>
                               <div className="flex gap-1 shrink-0">
-                                <button onClick={() => openInvest(mainTab, asset.id)} className="p-1.5 text-[#1A5C3A] hover:bg-[#1A5C3A]/10 rounded-lg transition-all" title="Log Investment"><Plus size={14} /></button>
+                                <button
+                                  onClick={() => openInvest(mainTab, asset.id)}
+                                  className="p-1.5 text-[#1A5C3A] hover:bg-[#1A5C3A]/10 rounded-lg transition-all"
+                                  title="Log Investment"
+                                >
+                                  <Plus size={14} />
+                                </button>
+                                <button
+                                  onClick={() => setHistoryAsset(asset)}
+                                  className="p-1.5 text-[#8A8070] hover:text-[#1565C0] hover:bg-[#1565C0]/10 rounded-lg transition-all"
+                                  title="View History"
+                                >
+                                  <Clock size={14} />
+                                </button>
                                 <button onClick={() => {
                                   if (isMFTab) { setEditFund(asset as MutualFund); setShowFundModal(true) }
                                   else if (isETFTab) { setEditETF(asset as ETF); setShowETFModal(true) }
                                   else { setEditStock(asset as Stock); setShowStockModal(true) }
-                                }} className="p-1.5 text-[#8A8070] hover:text-[#0D0D0D] rounded-lg hover:bg-[#F5F0E8] transition-all"><Edit3 size={14} /></button>
+                                }} className="p-1.5 text-[#8A8070] hover:text-[#0D0D0D] rounded-lg hover:bg-[#F5F0E8] transition-all">
+                                  <Edit3 size={14} />
+                                </button>
                                 <button onClick={() => {
                                   if (isMFTab) deleteFund(asset.id)
                                   else if (isETFTab) deleteETF(asset.id)
                                   else deleteStock(asset.id)
-                                }} className="p-1.5 text-[#8A8070] hover:text-red-500 rounded-lg hover:bg-[#F5F0E8] transition-all"><Trash2 size={14} /></button>
+                                }} className="p-1.5 text-[#8A8070] hover:text-red-500 rounded-lg hover:bg-[#F5F0E8] transition-all">
+                                  <Trash2 size={14} />
+                                </button>
                               </div>
                             </div>
 
@@ -1249,10 +1336,10 @@ export default function App() {
                                 <p className="font-bold text-[#0D0D0D] text-sm">{investments.length}</p>
                               </div>
 
-                              {isMFTab && lastNav && (
+                              {isMFTab && avgNav !== null && (
                                 <div className="bg-[#fff] rounded-xl p-2.5 border shadow-sm">
-                                  <p className="text-xs text-[#8A8070]">Last NAV</p>
-                                  <p className="font-bold text-[#8B6914] text-sm">₹{lastNav.toFixed(3)}</p>
+                                  <p className="text-xs text-[#8A8070]">Avg NAV</p>
+                                  <p className="font-bold text-[#8B6914] text-sm">₹{avgNav.toFixed(3)}</p>
                                 </div>
                               )}
                               {isMFTab && totalUnits > 0 && (
@@ -1454,7 +1541,15 @@ export default function App() {
         />
       )}
       {showProjection && <ProjectionModal funds={data.funds} etfs={data.etfs} stocks={data.stocks} onClose={() => setShowProjection(false)} />}
-      {/* {showGlobalSearch && <GlobalSearchModal data={data} onClose={() => setShowGlobalSearch(false)} onNavigate={(tab, sub) => { setMainTab(tab); if (sub) setSubTab(sub) }} />} */}
+      {historyAsset && (
+        <AssetHistoryModal
+          asset={historyAsset}
+          payments={data.payments.filter(p => p.assetId === historyAsset.id && p.assetType === historyAsset.assetType)}
+          onClose={() => setHistoryAsset(null)}
+          onEdit={openEditFromHistory}
+          onDelete={(id) => { deletePayment(id) }}
+        />
+      )}
 
       <p className="text-center text-[#8A8070] text-xs pb-4">Copyright © 2026 Sudeep Teja.</p>
     </div>
