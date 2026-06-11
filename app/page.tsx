@@ -1,7 +1,7 @@
 "use client"
 import { useState, useCallback, useRef, useEffect, useMemo } from "react"
 import {
-  Upload, Download, Plus, Trash2, TrendingUp, Wallet,
+  Upload, Download, CirclePlus, Trash2, TrendingUp, Wallet,
   Calendar, BarChart3, X, Edit3, BarChart2,
   Activity, Search, RefreshCw, Clock
 } from "lucide-react"
@@ -355,8 +355,8 @@ function AssetHistoryModal({ asset, payments, onClose, onEdit, onDelete }: Asset
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-xs text-[#8A8070] truncate">{p.notes || ''}</span>
                   <div className="flex gap-1">
-                    <button onClick={() => onEdit(p)} className="p-1.5 text-[#8A8070] hover:text-[#0D0D0D] rounded-lg"><Edit3 size={12} /></button>
-                    <button onClick={() => onDelete(p.id)} className="p-1.5 text-[#8A8070] hover:text-red-500 rounded-lg"><Trash2 size={12} /></button>
+                    <button onClick={() => onEdit(p)} className="p-1.5 text-[#8A8070] hover:text-[#0D0D0D] rounded-lg"><Edit3 size={20} /></button>
+                    <button onClick={() => onDelete(p.id)} className="p-1.5 text-[#e1313d] hover:text-red-500 rounded-lg"><Trash2 size={20} /></button>
                   </div>
                 </div>
               </div>
@@ -399,8 +399,8 @@ function AssetHistoryModal({ asset, payments, onClose, onEdit, onDelete }: Asset
                       <td className="px-4 py-3 text-[#4a4a4a] text-xs truncate max-w-[100px]">{p.notes || '—'}</td>
                       <td className="px-4 py-3">
                         <div className="flex gap-1 justify-end">
-                          <button onClick={() => onEdit(p)} className="p-1.5 text-[#8A8070] hover:text-[#0D0D0D] rounded-lg hover:bg-[#F5F0E8] transition-all"><Edit3 size={13} /></button>
-                          <button onClick={() => onDelete(p.id)} className="p-1.5 text-[#8A8070] hover:text-red-500 rounded-lg hover:bg-[#F5F0E8] transition-all"><Trash2 size={13} /></button>
+                          <button onClick={() => onEdit(p)} className="p-1.5 text-[#8A8070] hover:text-[#0D0D0D] rounded-lg hover:bg-[#F5F0E8] transition-all"><Edit3 size={20} /></button>
+                          <button onClick={() => onDelete(p.id)} className="p-1.5 text-[#e1313d] hover:text-red-500 rounded-lg hover:bg-[#F5F0E8] transition-all"><Trash2 size={20} /></button>
                         </div>
                       </td>
                     </tr>
@@ -1033,7 +1033,7 @@ export default function App() {
             <button className="btn-gold w-full" onClick={() => fileRef.current?.click()}><Upload size={14} className="inline mr-2" />Upload Excel File</button>
           </div>
           <div className="relative my-3"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[#C9A84C]/20" /></div><span className="relative bg-[#fff] px-3 text-xs text-[#8A8070]">or</span></div>
-          <button className="btn-outline w-full" onClick={startFresh}><Plus size={14} className="inline mr-2" />Start Fresh</button>
+          <button className="btn-outline w-full" onClick={startFresh}><CirclePlus size={14} className="inline mr-2" />Start Fresh</button>
         </div>
       </div>
     )
@@ -1228,7 +1228,7 @@ export default function App() {
               <div className="flex gap-2">
                 {subTab === 'investments' && currentAssets.length > 0 && (
                   <button className="btn-primary text-xs py-2 px-2" onClick={() => openInvest(mainTab)}>
-                    <Plus size={13} />Log
+                    <CirclePlus size={13} />Log
                   </button>
                 )}
                 <button className="btn-primary text-xs py-2 px-2" onClick={() => {
@@ -1236,7 +1236,7 @@ export default function App() {
                   else if (isETFTab) setShowETFModal(true)
                   else setShowStockModal(true)
                 }}>
-                  <Plus size={14} />Add {isMFTab ? 'Fund' : isETFTab ? 'ETF' : 'Stock'}
+                  <CirclePlus size={14} />Add {isMFTab ? 'Fund' : isETFTab ? 'ETF' : 'Stock'}
                 </button>
               </div>
             </div>
@@ -1257,7 +1257,7 @@ export default function App() {
                       else if (isETFTab) setShowETFModal(true)
                       else setShowStockModal(true)
                     }}>
-                      <Plus size={14} />Add First {isMFTab ? 'Fund' : isETFTab ? 'ETF' : 'Stock'}
+                      <CirclePlus size={14} />Add First {isMFTab ? 'Fund' : isETFTab ? 'ETF' : 'Stock'}
                     </button>
                   </div>
                 ) : filteredAssets.length === 0 ? (
@@ -1288,34 +1288,34 @@ export default function App() {
                                 {'symbol' in asset && <p className="text-xs text-[#8A8070]">{asset.symbol}</p>}
                                 <p className="text-xs text-[#8A8070] mt-0.5">{asset.category} · Since {asset.startDate} · {asset.expectedReturn}% CAGR</p>
                               </div>
-                              <div className="flex gap-1 shrink-0">
+                              <div className="flex gap-0 md:gap-1 shrink-0">
                                 <button
                                   onClick={() => openInvest(mainTab, asset.id)}
                                   className="p-1.5 text-[#1A5C3A] hover:bg-[#1A5C3A]/10 rounded-lg transition-all"
                                   title="Log Investment"
                                 >
-                                  <Plus size={14} />
+                                  <CirclePlus size={20} />
                                 </button>
                                 <button
                                   onClick={() => setHistoryAsset(asset)}
                                   className="p-1.5 text-[#8A8070] hover:text-[#1565C0] hover:bg-[#1565C0]/10 rounded-lg transition-all"
                                   title="View History"
                                 >
-                                  <Clock size={14} />
+                                  <Clock  size={20} />
                                 </button>
                                 <button onClick={() => {
                                   if (isMFTab) { setEditFund(asset as MutualFund); setShowFundModal(true) }
                                   else if (isETFTab) { setEditETF(asset as ETF); setShowETFModal(true) }
                                   else { setEditStock(asset as Stock); setShowStockModal(true) }
                                 }} className="p-1.5 text-[#8A8070] hover:text-[#0D0D0D] rounded-lg hover:bg-[#F5F0E8] transition-all">
-                                  <Edit3 size={14} />
+                                  <Edit3 size={20} />
                                 </button>
                                 <button onClick={() => {
                                   if (isMFTab) deleteFund(asset.id)
                                   else if (isETFTab) deleteETF(asset.id)
                                   else deleteStock(asset.id)
-                                }} className="p-1.5 text-[#8A8070] hover:text-red-500 rounded-lg hover:bg-[#F5F0E8] transition-all">
-                                  <Trash2 size={14} />
+                                }} className="p-1.5 text-[#e1313d] hover:text-red-500 rounded-lg hover:bg-[#F5F0E8] transition-all">
+                                  <Trash2 size={20} />
                                 </button>
                               </div>
                             </div>
@@ -1403,7 +1403,7 @@ export default function App() {
                   <div className="card p-10 text-center">
                     <Calendar size={36} className="text-[#C9A84C]/40 mx-auto mb-3" />
                     <p className="font-medium text-[#0D0D0D] mb-1">No investments logged yet</p>
-                    <button className="btn-primary mx-auto mt-4" onClick={() => openInvest(mainTab)}><Plus size={14} />Log First Investment</button>
+                    <button className="btn-primary mx-auto mt-4" onClick={() => openInvest(mainTab)}><CirclePlus size={14} />Log First Investment</button>
                   </div>
                 ) : (
                   <>
@@ -1444,8 +1444,8 @@ export default function App() {
                                 <div className="flex items-center justify-between mt-2">
                                   <span className="text-xs text-[#8A8070] truncate">{p.notes || ''}</span>
                                   <div className="flex gap-1">
-                                    <button onClick={() => { setEditPayment(p); setInvestAssetType(mainTab); setPreSelectedAssetId(null); setShowInvestModal(true) }} className="p-1.5 text-[#8A8070] hover:text-[#0D0D0D] rounded-lg"><Edit3 size={12} /></button>
-                                    <button onClick={() => deletePayment(p.id)} className="p-1.5 text-[#8A8070] hover:text-red-500 rounded-lg"><Trash2 size={12} /></button>
+                                    <button onClick={() => { setEditPayment(p); setInvestAssetType(mainTab); setPreSelectedAssetId(null); setShowInvestModal(true) }} className="p-1.5 text-[#8A8070] hover:text-[#0D0D0D] rounded-lg"><Edit3 size={20} /></button>
+                                    <button onClick={() => deletePayment(p.id)} className="p-1.5 text-[#e1313d] hover:text-red-500 rounded-lg"><Trash2 size={20} /></button>
                                   </div>
                                 </div>
                               </div>
@@ -1496,8 +1496,8 @@ export default function App() {
                                       <td className="px-4 py-3 text-[#4a4a4a] text-xs truncate max-w-[100px]">{p.notes || '—'}</td>
                                       <td className="px-4 py-3">
                                         <div className="flex gap-1 justify-end">
-                                          <button onClick={() => { setEditPayment(p); setInvestAssetType(mainTab); setPreSelectedAssetId(null); setShowInvestModal(true) }} className="p-1.5 text-[#8A8070] hover:text-[#0D0D0D] rounded-lg hover:bg-[#F5F0E8] transition-all"><Edit3 size={13} /></button>
-                                          <button onClick={() => deletePayment(p.id)} className="p-1.5 text-[#8A8070] hover:text-red-500 rounded-lg hover:bg-[#F5F0E8] transition-all"><Trash2 size={13} /></button>
+                                          <button onClick={() => { setEditPayment(p); setInvestAssetType(mainTab); setPreSelectedAssetId(null); setShowInvestModal(true) }} className="p-1.5 text-[#8A8070] hover:text-[#0D0D0D] rounded-lg hover:bg-[#F5F0E8] transition-all"><Edit3 size={20} /></button>
+                                          <button onClick={() => deletePayment(p.id)} className="p-1.5 text-[#e1313d] hover:text-red-500 rounded-lg hover:bg-[#F5F0E8] transition-all"><Trash2 size={20} /></button>
                                         </div>
                                       </td>
                                     </tr>
