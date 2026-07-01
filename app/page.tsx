@@ -3,7 +3,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react"
 import {
   Upload, Download, CirclePlus, Trash2, TrendingUp, Wallet,
   Calendar, BarChart3, X, Edit3, BarChart2,
-  Activity, Search, RefreshCw, Clock
+  Activity, Search, RefreshCw, Clock, Landmark, Percent
 } from "lucide-react"
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -102,6 +102,27 @@ function calcFutureValue(monthly: number, months: number, rate: number): number 
 
 function calcTotalInvested(payments: Payment[], assetId?: string, assetType?: string): number {
   return payments.filter(p => (!assetId || p.assetId === assetId) && (!assetType || p.assetType === assetType)).reduce((s, p) => s + p.amount, 0)
+}
+
+function calcLumpsum(principal: number, years: number, rate: number): number {
+  return principal * Math.pow(1 + rate / 100, years)
+}
+
+function calcSWP(total: number, withdrawal: number, rate: number, years: number): { finalValue: number; totalWithdrawal: number; depletedAtMonth: number | null } {
+  const months = years * 12
+  const r = rate / 100 / 12
+  let balance = total
+  let totalWithdrawal = 0
+  let depletedAtMonth: number | null = null
+  for (let i = 1; i <= months; i++) {
+    balance = balance * (1 + r)
+    if (balance <= 0) { depletedAtMonth = i; balance = 0; break }
+    const w = Math.min(withdrawal, balance)
+    balance -= w
+    totalWithdrawal += w
+    if (balance <= 0.5) { depletedAtMonth = i; balance = 0; break }
+  }
+  return { finalValue: Math.max(0, balance), totalWithdrawal, depletedAtMonth }
 }
 
 function emptyData(): AppData {
@@ -754,9 +775,172 @@ function ProjectionModal({ funds, etfs, stocks, onClose }: ProjectionModalProps)
   )
 }
 
+// ─── SIP / Lumpsum Calculator Modal ────────────────────────────────────────────
+function SIPLumpsumModal({ onClose }: { onClose: () => void }) {
+  const [mode, setMode] = useState<'sip' | 'lumpsum'>('sip')
+  const [monthly, setMonthly] = useState(25000)
+  const [lumpsum, setLumpsum] = useState(500000)
+  const [rate, setRate] = useState(12)
+  const [years, setYears] = useState(10)
+
+  const months = years * 12
+  const invested = mode === 'sip' ? monthly * months : lumpsum
+  const totalValue = mode === 'sip' ? calcFutureValue(monthly, months, rate) : calcLumpsum(lumpsum, years, rate)
+  const returns = Math.max(0, totalValue - invested)
+
+  const pieData = [
+    { name: 'Invested amount', value: Math.round(invested) },
+    { name: 'Est. returns', value: Math.round(returns) }
+  ]
+  const COLORS = ['#E8E2D5', '#1A5C3A']
+
+  return (
+    <Modal title="SIP Calculator" onClose={onClose} wide>
+      <div className="flex gap-1 mb-6 bg-[#F5F0E8] p-1 rounded-xl w-fit">
+        {(['sip', 'lumpsum'] as const).map(m => (
+          <button
+            key={m}
+            onClick={() => setMode(m)}
+            className={`px-5 py-1.5 rounded-lg text-sm font-semibold transition-all ${mode === m ? 'bg-[#1A5C3A] text-white' : 'text-[#8A8070] hover:text-[#0D0D0D]'}`}
+          >
+            {m === 'sip' ? 'SIP' : 'Lumpsum'}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-6 items-center">
+        <div>
+          {mode === 'sip' ? (
+            <SliderField label="Monthly investment" value={monthly} onChange={setMonthly} min={500} max={200000} step={500} prefix="₹ " />
+          ) : (
+            <SliderField label="Lumpsum amount" value={lumpsum} onChange={setLumpsum} min={1000} max={10000000} step={1000} prefix="₹ " />
+          )}
+          <SliderField label="Expected return rate (p.a)" value={rate} onChange={setRate} min={1} max={30} step={0.5} suffix="%" decimals={1} />
+          <SliderField label="Time period" value={years} onChange={setYears} min={1} max={40} step={1} suffix=" Yr" />
+        </div>
+
+        <div className="flex flex-col items-center justify-center">
+          <ResponsiveContainer width="100%" height={190}>
+            <PieChart>
+              <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={82} dataKey="value" startAngle={90} endAngle={-270} paddingAngle={2}>
+                {pieData.map((e, i) => <Cell key={i} fill={COLORS[i]} stroke="none" />)}
+              </Pie>
+              <Tooltip formatter={(v: number) => [`₹${Number(v).toLocaleString('en-IN')}`, '']} contentStyle={{ background: '#FDF8F0', border: '1px solid #C9A84C33', borderRadius: 12 }} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="flex gap-4 text-xs mt-1">
+            <span className="flex items-center gap-1.5 text-[#8A8070]"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: COLORS[0] }} />Invested amount</span>
+            <span className="flex items-center gap-1.5 text-[#8A8070]"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: COLORS[1] }} />Est. returns</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6 space-y-2.5 border-t border-[#C9A84C]/15 pt-4">
+        <div className="flex justify-between items-center text-sm">
+          <span className="text-[#8A8070]">Invested amount</span>
+          <span className="font-semibold text-[#0D0D0D]">₹{Math.round(invested).toLocaleString('en-IN')}</span>
+        </div>
+        <div className="flex justify-between items-center text-sm">
+          <span className="text-[#8A8070]">Est. returns</span>
+          <span className="font-semibold text-[#8B6914]">₹{Math.round(returns).toLocaleString('en-IN')}</span>
+        </div>
+        <div className="flex justify-between items-center pt-2 border-t border-[#C9A84C]/10">
+          <span className="text-[#0D0D0D] font-medium">Total value</span>
+          <span className="font-bold text-[#1A5C3A] text-lg">₹{Math.round(totalValue).toLocaleString('en-IN')}</span>
+        </div>
+      </div>
+      <p className="text-xs text-[#8A8070] text-center mt-4">Estimates based on expected returns. Actual returns may vary with market conditions.</p>
+    </Modal>
+  )
+}
+
+// ─── SWP Calculator Modal ───────────────────────────────────────────────────────
+function SWPModal({ onClose }: { onClose: () => void }) {
+  const [total, setTotal] = useState(500000)
+  const [withdrawal, setWithdrawal] = useState(10000)
+  const [rate, setRate] = useState(8)
+  const [years, setYears] = useState(5)
+
+  const { finalValue, totalWithdrawal, depletedAtMonth } = useMemo(
+    () => calcSWP(total, withdrawal, rate, years),
+    [total, withdrawal, rate, years]
+  )
+
+  return (
+    <Modal title="SWP (Systematic Withdrawal Plan) Calculator" onClose={onClose}>
+      <SliderField label="Total investment" value={total} onChange={setTotal} min={10000} max={10000000} step={10000} prefix="₹ " />
+      <SliderField label="Withdrawal per month" value={withdrawal} onChange={setWithdrawal} min={500} max={200000} step={500} prefix="₹ " />
+      <SliderField label="Expected return rate (p.a)" value={rate} onChange={setRate} min={1} max={20} step={0.5} suffix="%" decimals={1} />
+      <SliderField label="Time period" value={years} onChange={setYears} min={1} max={30} step={1} suffix=" Yr" />
+
+      <div className="mt-6 space-y-2.5 border-t border-[#C9A84C]/15 pt-4">
+        <div className="flex justify-between items-center text-sm">
+          <span className="text-[#8A8070]">Total investment</span>
+          <span className="font-semibold text-[#0D0D0D]">₹{total.toLocaleString('en-IN')}</span>
+        </div>
+        <div className="flex justify-between items-center text-sm">
+          <span className="text-[#8A8070]">Total withdrawal</span>
+          <span className="font-semibold text-[#8B6914]">₹{Math.round(totalWithdrawal).toLocaleString('en-IN')}</span>
+        </div>
+        <div className="flex justify-between items-center pt-2 border-t border-[#C9A84C]/10">
+          <span className="text-[#0D0D0D] font-medium">Final value</span>
+          <span className="font-bold text-[#1A5C3A] text-lg">₹{Math.round(finalValue).toLocaleString('en-IN')}</span>
+        </div>
+      </div>
+
+      {depletedAtMonth !== null && (
+        <p className="text-xs text-[#e1313d] bg-[#e1313d]/8 rounded-lg px-3 py-2 mt-4">
+          ⚠️ At this withdrawal rate, the corpus depletes after ~{Math.floor(depletedAtMonth / 12)}y {depletedAtMonth % 12}m, before your {years}-year period ends.
+        </p>
+      )}
+      <p className="text-xs text-[#8A8070] text-center mt-4">Estimates based on expected returns. Actual returns may vary with market conditions.</p>
+    </Modal>
+  )
+}
+
 // ─── Small helpers ────────────────────────────────────────────────────────────
 function Field({ label, children }: FieldProps) {
   return <div><label className="text-xs font-medium text-[#8A8070] mb-1.5 block uppercase tracking-wide">{label}</label>{children}</div>
+}
+
+interface SliderFieldProps {
+  label: string
+  value: number
+  onChange: (v: number) => void
+  min: number
+  max: number
+  step?: number
+  prefix?: string
+  suffix?: string
+  decimals?: number
+}
+
+function SliderField({ label, value, onChange, min, max, step = 1, prefix = '', suffix = '', decimals = 0 }: SliderFieldProps) {
+  const pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100))
+  const display = decimals > 0 ? value.toFixed(decimals) : Math.round(value).toLocaleString('en-IN')
+  return (
+    <div className="mb-5">
+      <div className="flex items-center justify-between mb-2 gap-2">
+        <label className="text-sm text-[#0D0D0D]">{label}</label>
+        <span className="text-sm font-medium text-[#1A5C3A] bg-[#1A5C3A]/10 px-3 py-1 rounded-lg whitespace-nowrap shrink-0">
+          {prefix}{display}{suffix}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={e => onChange(+e.target.value)}
+        className="w-full h-1.5 rounded-full appearance-none cursor-pointer slider-thumb"
+        style={{
+          accentColor: '#1A5C3A',
+          background: `linear-gradient(to right, #1A5C3A 0%, #1A5C3A ${pct}%, #E8E2D5 ${pct}%, #E8E2D5 100%)`
+        }}
+      />
+    </div>
+  )
 }
 
 function ColorPicker({ value, onChange }: ColorPickerProps) {
@@ -824,6 +1008,8 @@ export default function App() {
   const [editPayment, setEditPayment] = useState<Payment | undefined>()
   const [preSelectedAssetId, setPreSelectedAssetId] = useState<string | null>(null)
   const [showProjection, setShowProjection] = useState(false)
+  const [showSIPCalc, setShowSIPCalc] = useState(false)
+  const [showSWPCalc, setShowSWPCalc] = useState(false)
 
   // Per-asset history modal
   const [historyAsset, setHistoryAsset] = useState<MutualFund | ETF | Stock | null>(null)
@@ -1113,6 +1299,40 @@ export default function App() {
               ))}
             </div>
 
+            {/* Calculators */}
+            <div>
+              <h3 className="font-semibold text-[#0D0D0D] mb-3">Calculators</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <button onClick={() => setShowSIPCalc(true)} className="card p-4 flex items-center gap-3 text-left hover:border-[#1A5C3A]/40 transition-all">
+                  <div className="w-10 h-10 rounded-xl bg-[#1A5C3A]/10 flex items-center justify-center shrink-0">
+                    <TrendingUp size={18} className="text-[#1A5C3A]" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm text-[#0D0D0D]">SIP / Lumpsum</p>
+                    <p className="text-xs text-[#8A8070]">Project future value of investments</p>
+                  </div>
+                </button>
+                <button onClick={() => setShowSWPCalc(true)} className="card p-4 flex items-center gap-3 text-left hover:border-[#1A5C3A]/40 transition-all">
+                  <div className="w-10 h-10 rounded-xl bg-[#8B6914]/10 flex items-center justify-center shrink-0">
+                    <Landmark size={18} className="text-[#8B6914]" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm text-[#0D0D0D]">SWP Calculator</p>
+                    <p className="text-xs text-[#8A8070]">Plan monthly withdrawals from a corpus</p>
+                  </div>
+                </button>
+                <button onClick={() => setShowProjection(true)} className="card p-4 flex items-center gap-3 text-left hover:border-[#1A5C3A]/40 transition-all">
+                  <div className="w-10 h-10 rounded-xl bg-[#1565C0]/10 flex items-center justify-center shrink-0">
+                    <BarChart3 size={18} className="text-[#1565C0]" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm text-[#0D0D0D]">Portfolio Projection</p>
+                    <p className="text-xs text-[#8A8070]">Forecast your existing portfolio</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+
             {data.funds.length === 0 && data.etfs.length === 0 && data.stocks.length === 0 ? (
               <div className="card p-10 text-center">
                 <TrendingUp size={36} className="text-[#C9A84C]/40 mx-auto mb-3" />
@@ -1320,7 +1540,7 @@ export default function App() {
                               </div>
                             </div>
 
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-3">
                               {(isMutualFund(asset) || isETF(asset)) && (
                                 <div className="bg-[#fff] rounded-xl p-2.5 border shadow-sm">
                                   <p className="text-xs text-[#8A8070]">Monthly SIP</p>
@@ -1541,6 +1761,8 @@ export default function App() {
         />
       )}
       {showProjection && <ProjectionModal funds={data.funds} etfs={data.etfs} stocks={data.stocks} onClose={() => setShowProjection(false)} />}
+      {showSIPCalc && <SIPLumpsumModal onClose={() => setShowSIPCalc(false)} />}
+      {showSWPCalc && <SWPModal onClose={() => setShowSWPCalc(false)} />}
       {historyAsset && (
         <AssetHistoryModal
           asset={historyAsset}
