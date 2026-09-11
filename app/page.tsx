@@ -60,12 +60,25 @@ interface Payment {
   units?: number
 }
 
+interface Holding {
+  id: string
+  assetId: string
+  assetType: string
+  month: string
+  company: string
+  sector: string
+  allocation: number
+}
+
 interface AppData {
   funds: MutualFund[]
   etfs: ETF[]
   stocks: Stock[]
   payments: Payment[]
+  holdings: Holding[]
 }
+
+const MAX_HOLDING_MONTHS = 6
 
 // Type guards
 function isMutualFund(asset: any): asset is MutualFund {
@@ -126,7 +139,64 @@ function calcSWP(total: number, withdrawal: number, rate: number, years: number)
 }
 
 function emptyData(): AppData {
-  return { funds: [], etfs: [], stocks: [], payments: [] }
+  return { funds: [], etfs: [], stocks: [], payments: [], holdings: [] }
+}
+
+// Keep only the most recent MAX_HOLDING_MONTHS distinct months of holdings for a given asset
+function pruneHoldings(holdings: Holding[], assetId: string, assetType: string): Holding[] {
+  const months = [...new Set(holdings.filter(h => h.assetId === assetId && h.assetType === assetType).map(h => h.month))]
+    .sort()
+    .reverse()
+  const keepMonths = new Set(months.slice(0, MAX_HOLDING_MONTHS))
+  return holdings.filter(h => !(h.assetId === assetId && h.assetType === assetType) || keepMonths.has(h.month))
+}
+
+// Normalize a header key: lowercase, strip spaces/punctuation, so "% of AUM", "Percent of AUM", "Allocation %" etc. all match
+function normKey(k: string): string {
+  return k.toLowerCase().replace(/[^a-z]/g, '')
+}
+
+function findKey(row: Record<string, any>, candidates: string[]): string | null {
+  const keys = Object.keys(row)
+  for (const cand of candidates) {
+    const hit = keys.find(k => normKey(k) === normKey(cand))
+    if (hit) return hit
+  }
+  // fallback: partial match
+  for (const cand of candidates) {
+    const hit = keys.find(k => normKey(k).includes(normKey(cand)))
+    if (hit) return hit
+  }
+  return null
+}
+
+// Parse a monthly company-allocation sheet: columns Company/Stock, Sector, % of AUM
+function parseHoldingsSheet(buf: ArrayBuffer, assetId: string, assetType: string, month: string): Holding[] {
+  const wb = XLSX.read(buf, { type: 'array' })
+  const sheetName = wb.SheetNames[0]
+  if (!sheetName) return []
+  const rows = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets[sheetName], { defval: '' })
+  const holdings: Holding[] = []
+  rows.forEach(r => {
+    const companyKey = findKey(r, ['Company/Stock', 'Company', 'Stock', 'Holding', 'Name'])
+    const sectorKey = findKey(r, ['Sector', 'Industry'])
+    const allocKey = findKey(r, ['% of AUM', 'Allocation', '% Allocation', 'Percent', 'Weightage', 'Weight'])
+    const company = companyKey ? String(r[companyKey]).trim() : ''
+    if (!company) return
+    let allocRaw = allocKey ? r[allocKey] : 0
+    if (typeof allocRaw === 'string') allocRaw = allocRaw.replace('%', '').trim()
+    const allocation = +allocRaw || 0
+    holdings.push({
+      id: generateId(),
+      assetId,
+      assetType,
+      month,
+      company,
+      sector: sectorKey ? String(r[sectorKey]).trim() : 'Other',
+      allocation
+    })
+  })
+  return holdings
 }
 
 // ─── Excel ────────────────────────────────────────────────────────────────────
@@ -194,7 +264,21 @@ function parseExcel(buf: ArrayBuffer): AppData {
       })
     })
   }
-  return { funds, etfs, stocks, payments }
+  const holdings: Holding[] = []
+  if (wb.SheetNames.includes('Holdings')) {
+    XLSX.utils.sheet_to_json(wb.Sheets['Holdings'], { defval: '' }).forEach((r: any) => {
+      if (r.id && r.assetId && r.month && r.company) holdings.push({
+        id: String(r.id),
+        assetId: String(r.assetId),
+        assetType: String(r.assetType || 'mutual-funds'),
+        month: String(r.month),
+        company: String(r.company),
+        sector: String(r.sector || 'Other'),
+        allocation: +r.allocation || 0
+      })
+    })
+  }
+  return { funds, etfs, stocks, payments, holdings }
 }
 
 function exportExcel(data: AppData): void {
@@ -204,6 +288,7 @@ function exportExcel(data: AppData): void {
   addSheet(data.etfs.map(e => ({ id: e.id, name: e.name, symbol: e.symbol, category: e.category, sipAmount: e.sipAmount, startDate: e.startDate, expectedReturn: e.expectedReturn, color: e.color })), 'ETFs')
   addSheet(data.stocks.map(s => ({ id: s.id, name: s.name, symbol: s.symbol, category: s.category, quantity: s.quantity, buyPrice: s.buyPrice, startDate: s.startDate, expectedReturn: s.expectedReturn, color: s.color })), 'Stocks')
   addSheet(data.payments.map(p => ({ id: p.id, assetId: p.assetId, assetType: p.assetType, date: p.date, amount: p.amount, quantity: p.quantity ?? '', price: p.price ?? '', notes: p.notes ?? '', nav: p.nav ?? '', units: p.units ?? '' })), 'Payments')
+  addSheet((data.holdings || []).map(h => ({ id: h.id, assetId: h.assetId, assetType: h.assetType, month: h.month, company: h.company, sector: h.sector, allocation: h.allocation })), 'Holdings')
   XLSX.writeFile(wb, 'investment-tracker.xlsx')
 }
 
@@ -898,6 +983,255 @@ function SWPModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ─── Holdings Upload Modal ──────────────────────────────────────────────────────
+interface HoldingsUploadModalProps {
+  funds: MutualFund[]
+  etfs: ETF[]
+  preSelectedAssetId?: string | null
+  onSave: (assetId: string, assetType: string, month: string, holdings: Holding[]) => void
+  onClose: () => void
+}
+
+function HoldingsUploadModal({ funds, etfs, preSelectedAssetId, onSave, onClose }: HoldingsUploadModalProps) {
+  const allAssets = [...funds.map(f => ({ ...f, assetType: 'mutual-funds' as const })), ...etfs.map(e => ({ ...e, assetType: 'etfs' as const }))]
+  const [assetId, setAssetId] = useState(preSelectedAssetId || allAssets[0]?.id || '')
+  const [assetType, setAssetType] = useState(allAssets.find(a => a.id === (preSelectedAssetId || allAssets[0]?.id))?.assetType || 'mutual-funds')
+  const [month, setMonth] = useState(currentYearMonth())
+  const [fileName, setFileName] = useState('')
+  const [rows, setRows] = useState<Holding[]>([])
+  const [error, setError] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const handleAssetChange = (id: string) => {
+    setAssetId(id)
+    const a = allAssets.find(x => x.id === id)
+    if (a) setAssetType(a.assetType)
+  }
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setFileName(file.name)
+    setError('')
+    const reader = new FileReader()
+    reader.onload = ev => {
+      try {
+        const parsed = parseHoldingsSheet(ev.target?.result as ArrayBuffer, assetId, assetType, month)
+        if (parsed.length === 0) {
+          setError('No rows found. Make sure the sheet has Company/Stock, Sector and % of AUM columns.')
+          setRows([])
+        } else {
+          setRows(parsed)
+        }
+      } catch {
+        setError('Could not read this file.')
+        setRows([])
+      }
+    }
+    reader.readAsArrayBuffer(file)
+  }
+
+  const handleSave = () => {
+    if (!assetId || !month || rows.length === 0) return
+    onSave(assetId, assetType, month, rows)
+  }
+
+  return (
+    <Modal title="Upload Company Allocation" onClose={onClose} wide>
+      <div className="space-y-4">
+        <Field label="Fund / ETF">
+          {preSelectedAssetId ? (
+            <div className="inp flex items-center gap-2 cursor-not-allowed bg-[#fff]">
+              <span className="truncate font-medium text-[#0D0D0D]">{allAssets.find(a => a.id === assetId)?.name}</span>
+            </div>
+          ) : (
+            <select className="inp" value={assetId} onChange={e => handleAssetChange(e.target.value)}>
+              {allAssets.length === 0 && <option value="">No funds/ETFs added yet</option>}
+              {allAssets.map(a => <option key={a.id} value={a.id}>{a.name} {a.assetType === 'etfs' ? '(ETF)' : ''}</option>)}
+            </select>
+          )}
+        </Field>
+        <Field label="Month"><input className="inp" type="month" value={month} onChange={e => setMonth(e.target.value)} /></Field>
+        <Field label="Excel Sheet (Company/Stock, Sector, % of AUM)">
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFile} />
+          <button className="btn-outline w-full" onClick={() => fileRef.current?.click()}>
+            <Upload size={14} className="inline mr-2" />{fileName || 'Choose File'}
+          </button>
+        </Field>
+
+        {error && <p className="text-xs text-[#e1313d] bg-[#e1313d]/8 rounded-lg px-3 py-2">{error}</p>}
+
+        {rows.length > 0 && (
+          <div className="border border-[#C9A84C]/15 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-[#F5F0E8]">
+                <tr>
+                  <th className="text-left px-3 py-2 font-semibold text-[#4a4a4a]">Company</th>
+                  <th className="text-left px-3 py-2 font-semibold text-[#4a4a4a]">Sector</th>
+                  <th className="text-right px-3 py-2 font-semibold text-[#4a4a4a]">% AUM</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...rows].sort((a, b) => b.allocation - a.allocation).map((r, i) => (
+                  <tr key={i} className="border-t border-[#C9A84C]/10">
+                    <td className="px-3 py-1.5 text-[#0D0D0D]">{r.company}</td>
+                    <td className="px-3 py-1.5 text-[#8A8070]">{r.sector}</td>
+                    <td className="px-3 py-1.5 text-right font-medium text-[#1A5C3A]">{r.allocation.toFixed(2)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {rows.length > 0 && (
+          <p className="text-xs text-[#8A8070]">{rows.length} companies parsed. Saving replaces any existing data for this fund and month, and keeps only the latest {MAX_HOLDING_MONTHS} months.</p>
+        )}
+
+        <div className="flex gap-3 pt-2">
+          <button className="btn-outline flex-1" onClick={onClose}>Cancel</button>
+          <button className="btn-primary flex-1" disabled={rows.length === 0 || !assetId} onClick={handleSave}>Save Holdings</button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ─── Holdings View (Company Allocation tab) ──────────────────────────────────────
+interface HoldingsViewProps {
+  funds: MutualFund[]
+  etfs: ETF[]
+  holdings: Holding[]
+  onUpload: (assetId: string | null) => void
+  onDeleteMonth: (assetId: string, assetType: string, month: string) => void
+}
+
+function HoldingsView({ funds, etfs, holdings, onUpload, onDeleteMonth }: HoldingsViewProps) {
+  const allAssets = [...funds.map(f => ({ ...f, assetType: 'mutual-funds' as const })), ...etfs.map(e => ({ ...e, assetType: 'etfs' as const }))]
+  const [selectedId, setSelectedId] = useState<string>(allAssets[0]?.id ?? '')
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    if (!allAssets.find(a => a.id === selectedId) && allAssets.length > 0) setSelectedId(allAssets[0].id)
+  }, [allAssets.length])
+
+  const selectedAsset = allAssets.find(a => a.id === selectedId)
+  const assetHoldings = holdings.filter(h => h.assetId === selectedId)
+  const months = [...new Set(assetHoldings.map(h => h.month))].sort().reverse().slice(0, MAX_HOLDING_MONTHS)
+  const latestMonth = months[0]
+
+  // Pivot: company -> { [month]: allocation }
+  const companies = [...new Set(assetHoldings.map(h => h.company))]
+  const pivot = companies.map(company => {
+    const byMonth: Record<string, number> = {}
+    months.forEach(m => {
+      const h = assetHoldings.find(x => x.company === company && x.month === m)
+      if (h) byMonth[m] = h.allocation
+    })
+    return { company, byMonth, latest: byMonth[latestMonth] ?? 0 }
+  }).sort((a, b) => b.latest - a.latest)
+
+  const filteredPivot = search ? pivot.filter(p => p.company.toLowerCase().includes(search.toLowerCase())) : pivot
+
+  const sectorPieData = useMemo(() => {
+    if (!latestMonth) return []
+    const bySector: Record<string, number> = {}
+    assetHoldings.filter(h => h.month === latestMonth).forEach(h => { bySector[h.sector] = (bySector[h.sector] || 0) + h.allocation })
+    return Object.entries(bySector).map(([name, value]) => ({ name, value: +value.toFixed(2) })).sort((a, b) => b.value - a.value)
+  }, [assetHoldings, latestMonth])
+
+  if (allAssets.length === 0) {
+    return (
+      <div className="card p-10 text-center">
+        <Percent size={36} className="text-[#C9A84C]/40 mx-auto mb-3" />
+        <p className="font-medium text-[#0D0D0D] mb-1">Add a mutual fund or ETF first</p>
+        <p className="text-sm text-[#8A8070]">Company allocation is tracked per fund/ETF</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <select className="inp sm:max-w-xs" value={selectedId} onChange={e => { setSelectedId(e.target.value); setSearch('') }}>
+          {allAssets.map(a => <option key={a.id} value={a.id}>{a.name} {a.assetType === 'etfs' ? '(ETF)' : ''}</option>)}
+        </select>
+        <button className="btn-primary text-xs py-2 px-3 shrink-0" onClick={() => onUpload(selectedId)}>
+          <CirclePlus size={14} />Upload Month's Allocation
+        </button>
+      </div>
+
+      {assetHoldings.length === 0 ? (
+        <div className="card p-10 text-center">
+          <Percent size={36} className="text-[#C9A84C]/40 mx-auto mb-3" />
+          <p className="font-medium text-[#0D0D0D] mb-1">No company allocation uploaded for {selectedAsset?.name}</p>
+          <p className="text-sm text-[#8A8070] mb-4">Upload the fund's monthly portfolio disclosure sheet (Company/Stock, Sector, % of AUM)</p>
+          <button className="btn-primary mx-auto" onClick={() => onUpload(selectedId)}><CirclePlus size={14} />Upload First Month</button>
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {months.map(m => (
+              <span key={m} className="flex items-center gap-1 text-xs bg-[#F5F0E8] text-[#0D0D0D] px-2.5 py-1 rounded-lg">
+                {getMonthLabel(m)}
+                <button onClick={() => onDeleteMonth(selectedId, selectedAsset!.assetType, m)} className="text-[#8A8070] hover:text-[#e1313d]"><X size={11} /></button>
+              </span>
+            ))}
+            <span className="text-xs text-[#8A8070] ml-1">· last {months.length} of up to {MAX_HOLDING_MONTHS} months kept</span>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-4">
+            <div className="card p-4 sm:p-5 md:col-span-1">
+              <h3 className="font-semibold text-[#0D0D0D] mb-4">Sector Mix · {getMonthLabel(latestMonth)}</h3>
+              {sectorPieData.length === 0 ? <p className="text-sm text-[#8A8070] text-center py-8">No data</p> : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie data={sectorPieData} cx="50%" cy="50%" outerRadius={80} dataKey="value"
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                      {sectorPieData.map((e, i) => <Cell key={i} fill={ASSET_COLORS[i % ASSET_COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip formatter={(v: number) => [`${v}%`, 'of AUM']} contentStyle={{ background: '#FDF8F0', border: '1px solid #C9A84C33', borderRadius: 12 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            <div className="card p-4 sm:p-5 md:col-span-2">
+              <div className="flex items-center justify-between mb-3 gap-2">
+                <h3 className="font-semibold text-[#0D0D0D]">Company Allocation Trend</h3>
+                <div className="w-40"><SearchBar value={search} onChange={setSearch} placeholder="Search company..." /></div>
+              </div>
+              <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-[#F5F0E8] z-10">
+                    <tr>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-[#4a4a4a]">Company</th>
+                      {months.map(m => <th key={m} className="text-right px-3 py-2 text-xs font-semibold text-[#4a4a4a] whitespace-nowrap">{getMonthLabel(m)}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredPivot.length === 0 ? (
+                      <tr><td colSpan={months.length + 1} className="text-center text-sm text-[#8A8070] py-6">No results</td></tr>
+                    ) : filteredPivot.map(row => (
+                      <tr key={row.company} className="border-t border-[#C9A84C]/10 hover:bg-[#F5F0E8]/40">
+                        <td className="px-3 py-2 text-[#0D0D0D] font-medium truncate max-w-[160px]">{row.company}</td>
+                        {months.map(m => (
+                          <td key={m} className="px-3 py-2 text-right text-[#4a4a4a]">
+                            {row.byMonth[m] !== undefined ? `${row.byMonth[m].toFixed(2)}%` : <span className="text-[#C9A84C]/40">—</span>}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── Small helpers ────────────────────────────────────────────────────────────
 function Field({ label, children }: FieldProps) {
   return <div><label className="text-xs font-medium text-[#8A8070] mb-1.5 block uppercase tracking-wide">{label}</label>{children}</div>
@@ -1010,6 +1344,8 @@ export default function App() {
   const [showProjection, setShowProjection] = useState(false)
   const [showSIPCalc, setShowSIPCalc] = useState(false)
   const [showSWPCalc, setShowSWPCalc] = useState(false)
+  const [showHoldingsUpload, setShowHoldingsUpload] = useState(false)
+  const [holdingsUploadAssetId, setHoldingsUploadAssetId] = useState<string | null>(null)
 
   // Per-asset history modal
   const [historyAsset, setHistoryAsset] = useState<MutualFund | ETF | Stock | null>(null)
@@ -1116,6 +1452,21 @@ export default function App() {
     setPreSelectedAssetId(null)
   }
   const deletePayment = (id: string) => updateData(d => ({ ...d, payments: d.payments.filter(p => p.id !== id) }))
+
+  const saveHoldings = (assetId: string, assetType: string, month: string, newHoldings: Holding[]) => {
+    updateData(d => {
+      // Replace any existing rows for this fund + month, then add the new ones, then prune to last 6 months
+      const withoutThisMonth = (d.holdings || []).filter(h => !(h.assetId === assetId && h.assetType === assetType && h.month === month))
+      const merged = [...withoutThisMonth, ...newHoldings]
+      return { ...d, holdings: pruneHoldings(merged, assetId, assetType) }
+    })
+    setShowHoldingsUpload(false)
+    setHoldingsUploadAssetId(null)
+  }
+  const deleteHoldingsMonth = (assetId: string, assetType: string, month: string) => {
+    if (!confirm(`Delete the ${getMonthLabel(month)} allocation data?`)) return
+    updateData(d => ({ ...d, holdings: (d.holdings || []).filter(h => !(h.assetId === assetId && h.assetType === assetType && h.month === month)) }))
+  }
 
   const openInvest = (assetType: string, assetId: string | null = null) => {
     setInvestAssetType(assetType)
@@ -1257,7 +1608,8 @@ export default function App() {
             ['dashboard', 'Dashboard', BarChart3],
             ['mutual-funds', 'Mutual Funds', Wallet],
             ['etfs', 'ETFs', BarChart2],
-            ['stocks', 'Stocks', Activity]
+            ['stocks', 'Stocks', Activity],
+            ['holdings', 'Holdings', Percent]
           ] as const).map(([id, label, Icon]) => (
             <button
               key={id}
@@ -1428,8 +1780,19 @@ export default function App() {
           </div>
         )}
 
+        {/* ── HOLDINGS (Company Allocation) ── */}
+        {mainTab === 'holdings' && (
+          <HoldingsView
+            funds={data.funds}
+            etfs={data.etfs}
+            holdings={data.holdings || []}
+            onUpload={(assetId) => { setHoldingsUploadAssetId(assetId); setShowHoldingsUpload(true) }}
+            onDeleteMonth={deleteHoldingsMonth}
+          />
+        )}
+
         {/* ── ASSET MANAGEMENT ── */}
-        {mainTab !== 'dashboard' && (
+        {(isMFTab || isETFTab || isStockTab) && (
           <div className="space-y-4">
             {/* Sub-tab bar + Add button */}
             <div className="flex items-center justify-between gap-3">
@@ -1763,6 +2126,15 @@ export default function App() {
       {showProjection && <ProjectionModal funds={data.funds} etfs={data.etfs} stocks={data.stocks} onClose={() => setShowProjection(false)} />}
       {showSIPCalc && <SIPLumpsumModal onClose={() => setShowSIPCalc(false)} />}
       {showSWPCalc && <SWPModal onClose={() => setShowSWPCalc(false)} />}
+      {showHoldingsUpload && (
+        <HoldingsUploadModal
+          funds={data.funds}
+          etfs={data.etfs}
+          preSelectedAssetId={holdingsUploadAssetId}
+          onSave={saveHoldings}
+          onClose={() => { setShowHoldingsUpload(false); setHoldingsUploadAssetId(null) }}
+        />
+      )}
       {historyAsset && (
         <AssetHistoryModal
           asset={historyAsset}
