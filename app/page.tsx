@@ -1017,12 +1017,12 @@ function HoldingsUploadModal({ funds, etfs, preSelectedAssetId, onSave, onClose 
     reader.onload = ev => {
       try {
         const parsed = parseHoldingsSheet(ev.target?.result as ArrayBuffer, assetId, assetType, month)
-        if (parsed.length === 0) {
-          setError('No rows found. Make sure the sheet has Company/Stock, Sector and % of AUM columns.')
-          setRows([])
-        } else {
+        // if (parsed.length === 0) {
+        //   setError('No rows found. Make sure the sheet has Company/Stock, Sector and % of AUM columns.')
+        //   setRows([])
+        // } else {
           setRows(parsed)
-        }
+        // }
       } catch {
         setError('Could not read this file.')
         setRows([])
