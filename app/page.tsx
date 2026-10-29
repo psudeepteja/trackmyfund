@@ -3,7 +3,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react"
 import {
   Upload, Download, CirclePlus, Trash2, TrendingUp, Wallet,
   Calendar, BarChart3, X, Edit3, BarChart2,
-  Activity, Search, RefreshCw, Clock, Landmark, Percent
+  Activity, Search, RefreshCw, Clock, Landmark, Percent, ArrowLeft
 } from "lucide-react"
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -860,8 +860,21 @@ function ProjectionModal({ funds, etfs, stocks, onClose }: ProjectionModalProps)
   )
 }
 
-// ─── SIP / Lumpsum Calculator Modal ────────────────────────────────────────────
-function SIPLumpsumModal({ onClose }: { onClose: () => void }) {
+// ─── Page shell ───────────────────────────────────────────────────────────────
+function CalcPage({ title, onBack, children }: { title: string; onBack: () => void; children: React.ReactNode }) {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <button className="btn-outline text-xs py-2 px-3" onClick={onBack}><ArrowLeft size={14} />Back</button>
+        <h2 className="text-lg font-semibold text-[#0D0D0D]">{title}</h2>
+      </div>
+      <div className="card p-4 sm:p-6">{children}</div>
+    </div>
+  )
+}
+
+// ─── SIP / Lumpsum Page ───────────────────────────────────────────────────────
+function SIPLumpsumPage({ onBack }: { onBack: () => void }) {
   const [mode, setMode] = useState<'sip' | 'lumpsum'>('sip')
   const [monthly, setMonthly] = useState(25000)
   const [lumpsum, setLumpsum] = useState(500000)
@@ -880,67 +893,53 @@ function SIPLumpsumModal({ onClose }: { onClose: () => void }) {
   const COLORS = ['#E8E2D5', '#1A5C3A']
 
   return (
-    <Modal title="SIP Calculator" onClose={onClose} wide>
+    <CalcPage title="SIP / Lumpsum Calculator" onBack={onBack}>
       <div className="flex gap-1 mb-6 bg-[#F5F0E8] p-1 rounded-xl w-fit">
         {(['sip', 'lumpsum'] as const).map(m => (
-          <button
-            key={m}
-            onClick={() => setMode(m)}
-            className={`px-5 py-1.5 rounded-lg text-sm font-semibold transition-all ${mode === m ? 'bg-[#1A5C3A] text-white' : 'text-[#8A8070] hover:text-[#0D0D0D]'}`}
-          >
+          <button key={m} onClick={() => setMode(m)}
+            className={`px-5 py-1.5 rounded-lg text-sm font-semibold transition-all ${mode === m ? 'bg-[#1A5C3A] text-white' : 'text-[#8A8070] hover:text-[#0D0D0D]'}`}>
             {m === 'sip' ? 'SIP' : 'Lumpsum'}
           </button>
         ))}
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-6 items-center">
+      <div className="grid md:grid-cols-2 gap-8">
         <div>
-          {mode === 'sip' ? (
-            <SliderField label="Monthly investment" value={monthly} onChange={setMonthly} min={500} max={200000} step={500} prefix="₹ " />
-          ) : (
-            <SliderField label="Lumpsum amount" value={lumpsum} onChange={setLumpsum} min={1000} max={10000000} step={1000} prefix="₹ " />
-          )}
+          {mode === 'sip'
+            ? <SliderField label="Monthly investment" value={monthly} onChange={setMonthly} min={500} max={200000} step={500} prefix="₹" />
+            : <SliderField label="Lumpsum amount" value={lumpsum} onChange={setLumpsum} min={1000} max={10000000} step={1000} prefix="₹" />}
           <SliderField label="Expected return rate (p.a)" value={rate} onChange={setRate} min={1} max={30} step={0.5} suffix="%" decimals={1} />
-          <SliderField label="Time period" value={years} onChange={setYears} min={1} max={40} step={1} suffix=" Yr" />
+          <SliderField label="Time period" value={years} onChange={setYears} min={1} max={40} step={1} suffix="Yr" />
         </div>
 
-        <div className="flex flex-col items-center justify-center">
-          <ResponsiveContainer width="100%" height={190}>
+        <div>
+          <ResponsiveContainer width="100%" height={220}>
             <PieChart>
-              <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={82} dataKey="value" startAngle={90} endAngle={-270} paddingAngle={2}>
-                {pieData.map((e, i) => <Cell key={i} fill={COLORS[i]} stroke="none" />)}
+              <Pie data={pieData} cx="50%" cy="50%" innerRadius={62} outerRadius={92} dataKey="value" startAngle={90} endAngle={-270} paddingAngle={2}>
+                {pieData.map((_, i) => <Cell key={i} fill={COLORS[i]} stroke="none" />)}
               </Pie>
               <Tooltip formatter={(v: number) => [`₹${Number(v).toLocaleString('en-IN')}`, '']} contentStyle={{ background: '#FDF8F0', border: '1px solid #C9A84C33', borderRadius: 12 }} />
             </PieChart>
           </ResponsiveContainer>
-          <div className="flex gap-4 text-xs mt-1">
+          <div className="flex justify-center gap-4 text-xs mt-1">
             <span className="flex items-center gap-1.5 text-[#8A8070]"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: COLORS[0] }} />Invested amount</span>
             <span className="flex items-center gap-1.5 text-[#8A8070]"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: COLORS[1] }} />Est. returns</span>
           </div>
-        </div>
-      </div>
 
-      <div className="mt-6 space-y-2.5 border-t border-[#C9A84C]/15 pt-4">
-        <div className="flex justify-between items-center text-sm">
-          <span className="text-[#8A8070]">Invested amount</span>
-          <span className="font-semibold text-[#0D0D0D]">₹{Math.round(invested).toLocaleString('en-IN')}</span>
-        </div>
-        <div className="flex justify-between items-center text-sm">
-          <span className="text-[#8A8070]">Est. returns</span>
-          <span className="font-semibold text-[#8B6914]">₹{Math.round(returns).toLocaleString('en-IN')}</span>
-        </div>
-        <div className="flex justify-between items-center pt-2 border-t border-[#C9A84C]/10">
-          <span className="text-[#0D0D0D] font-medium">Total value</span>
-          <span className="font-bold text-[#1A5C3A] text-lg">₹{Math.round(totalValue).toLocaleString('en-IN')}</span>
+          <div className="mt-6 space-y-2.5 border-t border-[#C9A84C]/15 pt-4">
+            <div className="flex justify-between text-sm"><span className="text-[#8A8070]">Invested amount</span><span className="font-semibold text-[#0D0D0D]">₹{Math.round(invested).toLocaleString('en-IN')}</span></div>
+            <div className="flex justify-between text-sm"><span className="text-[#8A8070]">Est. returns</span><span className="font-semibold text-[#8B6914]">₹{Math.round(returns).toLocaleString('en-IN')}</span></div>
+            <div className="flex justify-between items-center pt-2 border-t border-[#C9A84C]/10"><span className="font-medium text-[#0D0D0D]">Total value</span><span className="font-bold text-[#1A5C3A] text-lg">₹{Math.round(totalValue).toLocaleString('en-IN')}</span></div>
+          </div>
         </div>
       </div>
-      <p className="text-xs text-[#8A8070] text-center mt-4">Estimates based on expected returns. Actual returns may vary with market conditions.</p>
-    </Modal>
+      <p className="text-xs text-[#8A8070] text-center mt-6">Estimates based on expected returns. Actual returns may vary with market conditions.</p>
+    </CalcPage>
   )
 }
 
-// ─── SWP Calculator Modal ───────────────────────────────────────────────────────
-function SWPModal({ onClose }: { onClose: () => void }) {
+// ─── SWP Page ─────────────────────────────────────────────────────────────────
+function SWPPage({ onBack }: { onBack: () => void }) {
   const [total, setTotal] = useState(500000)
   const [withdrawal, setWithdrawal] = useState(10000)
   const [rate, setRate] = useState(8)
@@ -952,34 +951,30 @@ function SWPModal({ onClose }: { onClose: () => void }) {
   )
 
   return (
-    <Modal title="SWP (Systematic Withdrawal Plan) Calculator" onClose={onClose}>
-      <SliderField label="Total investment" value={total} onChange={setTotal} min={10000} max={10000000} step={10000} prefix="₹ " />
-      <SliderField label="Withdrawal per month" value={withdrawal} onChange={setWithdrawal} min={500} max={200000} step={500} prefix="₹ " />
-      <SliderField label="Expected return rate (p.a)" value={rate} onChange={setRate} min={1} max={20} step={0.5} suffix="%" decimals={1} />
-      <SliderField label="Time period" value={years} onChange={setYears} min={1} max={30} step={1} suffix=" Yr" />
+    <CalcPage title="SWP (Systematic Withdrawal Plan) Calculator" onBack={onBack}>
+      <div className="grid md:grid-cols-2 gap-8">
+        <div>
+          <SliderField label="Total investment" value={total} onChange={setTotal} min={10000} max={10000000} step={10000} prefix="₹" />
+          <SliderField label="Withdrawal per month" value={withdrawal} onChange={setWithdrawal} min={500} max={200000} step={500} prefix="₹" />
+          <SliderField label="Expected return rate (p.a)" value={rate} onChange={setRate} min={1} max={20} step={0.5} suffix="%" decimals={1} />
+          <SliderField label="Time period" value={years} onChange={setYears} min={1} max={30} step={1} suffix="Yr" />
+        </div>
 
-      <div className="mt-6 space-y-2.5 border-t border-[#C9A84C]/15 pt-4">
-        <div className="flex justify-between items-center text-sm">
-          <span className="text-[#8A8070]">Total investment</span>
-          <span className="font-semibold text-[#0D0D0D]">₹{total.toLocaleString('en-IN')}</span>
-        </div>
-        <div className="flex justify-between items-center text-sm">
-          <span className="text-[#8A8070]">Total withdrawal</span>
-          <span className="font-semibold text-[#8B6914]">₹{Math.round(totalWithdrawal).toLocaleString('en-IN')}</span>
-        </div>
-        <div className="flex justify-between items-center pt-2 border-t border-[#C9A84C]/10">
-          <span className="text-[#0D0D0D] font-medium">Final value</span>
-          <span className="font-bold text-[#1A5C3A] text-lg">₹{Math.round(finalValue).toLocaleString('en-IN')}</span>
+        <div className="flex flex-col justify-center">
+          <div className="space-y-2.5">
+            <div className="flex justify-between text-sm"><span className="text-[#8A8070]">Total investment</span><span className="font-semibold text-[#0D0D0D]">₹{total.toLocaleString('en-IN')}</span></div>
+            <div className="flex justify-between text-sm"><span className="text-[#8A8070]">Total withdrawal</span><span className="font-semibold text-[#8B6914]">₹{Math.round(totalWithdrawal).toLocaleString('en-IN')}</span></div>
+            <div className="flex justify-between items-center pt-2 border-t border-[#C9A84C]/10"><span className="font-medium text-[#0D0D0D]">Final value</span><span className="font-bold text-[#1A5C3A] text-lg">₹{Math.round(finalValue).toLocaleString('en-IN')}</span></div>
+          </div>
+          {depletedAtMonth !== null && (
+            <p className="text-xs text-[#e1313d] bg-[#e1313d]/8 rounded-lg px-3 py-2 mt-4">
+              ⚠️ At this withdrawal rate, the corpus depletes after ~{Math.floor(depletedAtMonth / 12)}y {depletedAtMonth % 12}m, before your {years}-year period ends.
+            </p>
+          )}
         </div>
       </div>
-
-      {depletedAtMonth !== null && (
-        <p className="text-xs text-[#e1313d] bg-[#e1313d]/8 rounded-lg px-3 py-2 mt-4">
-          ⚠️ At this withdrawal rate, the corpus depletes after ~{Math.floor(depletedAtMonth / 12)}y {depletedAtMonth % 12}m, before your {years}-year period ends.
-        </p>
-      )}
-      <p className="text-xs text-[#8A8070] text-center mt-4">Estimates based on expected returns. Actual returns may vary with market conditions.</p>
-    </Modal>
+      <p className="text-xs text-[#8A8070] text-center mt-6">Estimates based on expected returns. Actual returns may vary with market conditions.</p>
+    </CalcPage>
   )
 }
 
@@ -1017,6 +1012,7 @@ function HoldingsUploadModal({ funds, etfs, preSelectedAssetId, onSave, onClose 
     reader.onload = ev => {
       try {
         const parsed = parseHoldingsSheet(ev.target?.result as ArrayBuffer, assetId, assetType, month)
+        debugger
         // if (parsed.length === 0) {
         //   setError('No rows found. Make sure the sheet has Company/Stock, Sector and % of AUM columns.')
         //   setRows([])
@@ -1250,22 +1246,47 @@ interface SliderFieldProps {
 }
 
 function SliderField({ label, value, onChange, min, max, step = 1, prefix = '', suffix = '', decimals = 0 }: SliderFieldProps) {
+  const [text, setText] = useState(String(value))
+  const [focused, setFocused] = useState(false)
+
+  useEffect(() => { if (!focused) setText(String(value)) }, [value, focused])
+
   const pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100))
-  const display = decimals > 0 ? value.toFixed(decimals) : Math.round(value).toLocaleString('en-IN')
+  const formatted = decimals > 0 ? value.toFixed(decimals) : Math.round(value).toLocaleString('en-IN')
+
+  const handleType = (raw: string) => {
+    const v = raw.replace(/,/g, '')
+    if (v === '' || /^\d*\.?\d*$/.test(v)) {
+      setText(v)
+      if (v !== '' && v !== '.') onChange(+v)
+    }
+  }
+  const handleBlur = () => {
+    setFocused(false)
+    if (text === '' || text === '.' || +text < min) onChange(min)
+  }
+
   return (
     <div className="mb-5">
       <div className="flex items-center justify-between mb-2 gap-2">
         <label className="text-sm text-[#0D0D0D]">{label}</label>
-        <span className="text-sm font-medium text-[#1A5C3A] bg-[#1A5C3A]/10 px-3 py-1 rounded-lg whitespace-nowrap shrink-0">
-          {prefix}{display}{suffix}
-        </span>
+        <div className="flex items-center gap-1 bg-[#1A5C3A]/10 rounded-lg px-3 py-1 shrink-0">
+          {prefix && <span className="text-sm font-medium text-[#1A5C3A]">{prefix}</span>}
+          <input
+            type="text"
+            inputMode="decimal"
+            value={focused ? text : formatted}
+            onFocus={() => { setFocused(true); setText(String(value)) }}
+            onChange={e => handleType(e.target.value)}
+            onBlur={handleBlur}
+            className="w-24 bg-transparent text-right text-sm font-medium text-[#1A5C3A] focus:outline-none"
+          />
+          {suffix && <span className="text-sm font-medium text-[#1A5C3A]">{suffix}</span>}
+        </div>
       </div>
       <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
+        type="range" min={min} max={max} step={step}
+        value={Math.min(max, Math.max(min, value))}
         onChange={e => onChange(+e.target.value)}
         className="w-full h-1.5 rounded-full appearance-none cursor-pointer slider-thumb"
         style={{
@@ -1342,8 +1363,6 @@ export default function App() {
   const [editPayment, setEditPayment] = useState<Payment | undefined>()
   const [preSelectedAssetId, setPreSelectedAssetId] = useState<string | null>(null)
   const [showProjection, setShowProjection] = useState(false)
-  const [showSIPCalc, setShowSIPCalc] = useState(false)
-  const [showSWPCalc, setShowSWPCalc] = useState(false)
   const [showHoldingsUpload, setShowHoldingsUpload] = useState(false)
   const [holdingsUploadAssetId, setHoldingsUploadAssetId] = useState<string | null>(null)
 
@@ -1632,8 +1651,8 @@ export default function App() {
       </header>
 
       <main className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-3">
-
-        {/* ── DASHBOARD ── */}
+         {mainTab === 'sip' && <SIPLumpsumPage onBack={() => setMainTab('dashboard')} />}
+         {mainTab === 'swp' && <SWPPage onBack={() => setMainTab('dashboard')} />}
         {mainTab === 'dashboard' && (
           <div className="space-y-5">
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-3">
@@ -1655,7 +1674,7 @@ export default function App() {
             <div>
               <h3 className="font-semibold text-[#0D0D0D] mb-3">Calculators</h3>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <button onClick={() => setShowSIPCalc(true)} className="card p-4 flex items-center gap-3 text-left hover:border-[#1A5C3A]/40 transition-all">
+                <button onClick={() => setMainTab('sip')} className="card p-4 flex items-center gap-3 text-left hover:border-[#1A5C3A]/40 transition-all">
                   <div className="w-10 h-10 rounded-xl bg-[#1A5C3A]/10 flex items-center justify-center shrink-0">
                     <TrendingUp size={18} className="text-[#1A5C3A]" />
                   </div>
@@ -1664,7 +1683,7 @@ export default function App() {
                     <p className="text-xs text-[#8A8070]">Project future value of investments</p>
                   </div>
                 </button>
-                <button onClick={() => setShowSWPCalc(true)} className="card p-4 flex items-center gap-3 text-left hover:border-[#1A5C3A]/40 transition-all">
+                <button onClick={() => setMainTab('swp')} className="card p-4 flex items-center gap-3 text-left hover:border-[#1A5C3A]/40 transition-all">
                   <div className="w-10 h-10 rounded-xl bg-[#8B6914]/10 flex items-center justify-center shrink-0">
                     <Landmark size={18} className="text-[#8B6914]" />
                   </div>
@@ -1780,7 +1799,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ── HOLDINGS (Company Allocation) ── */}
         {mainTab === 'holdings' && (
           <HoldingsView
             funds={data.funds}
@@ -1791,7 +1809,6 @@ export default function App() {
           />
         )}
 
-        {/* ── ASSET MANAGEMENT ── */}
         {(isMFTab || isETFTab || isStockTab) && (
           <div className="space-y-4">
             {/* Sub-tab bar + Add button */}
@@ -2107,7 +2124,6 @@ export default function App() {
         )}
       </main>
 
-      {/* ── Modals ── */}
       {showFundModal && <FundModal fund={editFund} onSave={saveFund} onClose={() => { setShowFundModal(false); setEditFund(undefined) }} />}
       {showETFModal && <ETFModal etf={editETF} onSave={saveETF} onClose={() => { setShowETFModal(false); setEditETF(undefined) }} />}
       {showStockModal && <StockModal stock={editStock} onSave={saveStock} onClose={() => { setShowStockModal(false); setEditStock(undefined) }} />}
@@ -2124,8 +2140,6 @@ export default function App() {
         />
       )}
       {showProjection && <ProjectionModal funds={data.funds} etfs={data.etfs} stocks={data.stocks} onClose={() => setShowProjection(false)} />}
-      {showSIPCalc && <SIPLumpsumModal onClose={() => setShowSIPCalc(false)} />}
-      {showSWPCalc && <SWPModal onClose={() => setShowSWPCalc(false)} />}
       {showHoldingsUpload && (
         <HoldingsUploadModal
           funds={data.funds}
